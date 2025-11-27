@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Future Message App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              'primary': '#0284c7', // sky-600
+              'primary-hover': '#0369a1', // sky-700
+              'secondary': '#f0f9ff', // sky-50
+              'accent': '#fbbf24', // amber-400
+            },
+          },
+        },
+      }
+    </script>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@^19.1.1/",
+    "react-router-dom": "https://esm.sh/react-router-dom@^7.7.1",
+    "react/": "https://esm.sh/react@^19.1.1/",
+    "react": "https://esm.sh/react@^19.1.1",
+    "firebase/": "https://esm.sh/firebase@^12.0.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.1"
+  }
+}
+</script>
+</head>
+  <body class="bg-gray-100">
+    <div id="root"></div>
+    <script type="module" src="./index.tsx"></script>
+  </body>
+</html>

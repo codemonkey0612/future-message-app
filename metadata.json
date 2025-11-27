@@ -1,0 +1,5 @@
+{
+  "name": "Future Message App",
+  "description": "A web application that allows users to register messages to be delivered at a future specified time, and provides a comprehensive admin panel for campaign management.",
+  "requestFramePermissions": []
+}

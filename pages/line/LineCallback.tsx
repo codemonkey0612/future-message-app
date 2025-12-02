@@ -76,7 +76,7 @@ const LineCallback: React.FC = () => {
           body: new URLSearchParams({
             grant_type: 'authorization_code',
             code,
-            redirect_uri: `${window.location.origin}/#/line/callback`,
+            redirect_uri: `${window.location.origin}/line/callback`,
             client_id: fetchedCampaign.lineChannelId,
             client_secret: fetchedCampaign.lineChannelSecret,
           }),

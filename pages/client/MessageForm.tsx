@@ -103,7 +103,7 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
     sessionStorage.setItem('pendingSubmission', JSON.stringify(submissionData));
     sessionStorage.setItem('lineAuthState', state);
 
-    const redirectUri = `${window.location.origin}/#/line/callback`;
+    const redirectUri = `${window.location.origin}/line/callback`;
     const lineAuthUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${campaign.lineChannelId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=profile%20openid`;
     
     window.location.href = lineAuthUrl;

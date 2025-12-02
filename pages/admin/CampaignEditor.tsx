@@ -288,7 +288,7 @@ const CampaignEditor: React.FC = () => {
   if (loading) return <div className="flex justify-center items-center h-full"><Spinner /></div>;
   if (!campaign) return <div>Campaign not found or client not specified.</div>;
   
-  const campaignUrl = id ? `${window.location.origin}/#/campaign/${id}` : null;
+  const campaignUrl = id ? `${window.location.origin}/campaign/${id}` : null;
 
   const breadcrumbItems = clientName && campaign ? [
     { label: 'クライアント管理', path: '/admin/clients' },
@@ -405,7 +405,7 @@ const CampaignEditor: React.FC = () => {
                                 <p className="text-sm font-medium text-gray-700">コールバックURLの設定</p>
                                 <p className="text-xs text-gray-600 mt-1">LINE Developersコンソールのチャンネル設定で、以下のコールバックURLを登録してください。</p>
                                 <div className="mt-2 p-2 bg-gray-100 rounded-md text-sm text-gray-800 font-mono break-all">
-                                    {`${window.location.origin}/#/line/callback`}
+                                    {`${window.location.origin}/line/callback`}
                                 </div>
                             </div>
                         </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 
 import CampaignView from './pages/client/CampaignView';
@@ -13,7 +13,7 @@ import LineCallback from './pages/line/LineCallback';
 const App: React.FC = () => {
   return (
     <AppProvider>
-      <HashRouter>
+      <BrowserRouter>
         <Routes>
           <Route path="/" element={<Navigate to="/admin/clients" replace />} />
           <Route path="/campaign/:id" element={<CampaignView />} />
@@ -28,7 +28,7 @@ const App: React.FC = () => {
             <Route path="clients/:clientId/campaigns/edit/:id" element={<CampaignEditor />} />
           </Route>
         </Routes>
-      </HashRouter>
+      </BrowserRouter>
     </AppProvider>
   );
 };

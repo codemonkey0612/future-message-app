@@ -9,8 +9,18 @@ const CampaignView: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string>('');
 
   useEffect(() => {
+    // Generate or retrieve persistent User ID
+    let storedUserId = localStorage.getItem('fma_user_id');
+    if (!storedUserId) {
+        // Simple UUID v4 generation if not available
+        storedUserId = crypto.randomUUID ? crypto.randomUUID() : 'user-' + Date.now().toString(36) + Math.random().toString(36).substr(2);
+        localStorage.setItem('fma_user_id', storedUserId);
+    }
+    setUserId(storedUserId);
+
     const fetchCampaign = async () => {
       if (id) {
         try {
@@ -180,7 +190,8 @@ const CampaignView: React.FC = () => {
                       <a key={i} href={link.url} className="hover:text-primary">{link.text}</a>
                   ))}
               </div>
-              <p className="text-gray-400">{content.footer.copyright}</p>
+              <p className="text-gray-400 mb-2">{content.footer.copyright}</p>
+              <p className="text-xs text-gray-600">User ID: {userId}</p>
           </div>
         </footer>
       </div>

@@ -288,6 +288,7 @@ const CampaignEditor: React.FC = () => {
   if (loading) return <div className="flex justify-center items-center h-full"><Spinner /></div>;
   if (!campaign) return <div>Campaign not found or client not specified.</div>;
   
+  // URL from origin + path (no hash)
   const campaignUrl = id ? `${window.location.origin}/campaign/${id}` : null;
 
   const breadcrumbItems = clientName && campaign ? [
@@ -437,6 +438,8 @@ const CampaignEditor: React.FC = () => {
                 <h3 className="text-lg font-semibold">フォーム項目</h3>
                 {Object.entries(campaign.settings.form.fields).map(([key, value]) => {
                     if (key === 'customFields') return null;
+                    if (key === 'email') return null; 
+                    
                     const field = value as {enabled: boolean, required: boolean, label: string};
                     return (
                         <div key={key} className="flex items-center gap-4 p-2 border rounded bg-gray-50">

@@ -19,6 +19,7 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
   const [submissionSuccess, setSubmissionSuccess] = useState(false); // Only for email
   const [modalContent, setModalContent] = useState<{ title: string; content: string } | null>(null);
   const [uploadText, setUploadText] = useState('クリックしてアップロード');
+  const [hasAlreadySubmitted, setHasAlreadySubmitted] = useState(false);
 
   const { form: formSettings, survey: surveySettings, content } = campaign.settings;
 
@@ -27,7 +28,13 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
     if (isMobile) {
         setUploadText('タップしてアップロード');
     }
-  }, []);
+    
+    // Check if user has already submitted
+    const submittedFlag = localStorage.getItem(`fma_submitted_${campaign.id}`);
+    if (submittedFlag === 'true') {
+        setHasAlreadySubmitted(true);
+    }
+  }, [campaign.id]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -50,10 +57,20 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
     if (formSettings.fields.message.enabled && formSettings.fields.message.required && !formData.message) {
       errors.message = 'メッセージは必須です。';
     }
-    if (campaign.deliveryChannel === 'email' && formSettings.fields.email.enabled && formSettings.fields.email.required && !formData.email) {
-      errors.email = 'メールアドレスは必須です。';
-    } else if (campaign.deliveryChannel === 'email' && formSettings.fields.email.enabled && formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {
-        errors.email = 'メールアドレスの形式が正しくありません。'
+    
+    // Email validation only if delivery channel is email OR undefined (default)
+    const isEmailDelivery = campaign.deliveryChannel === 'email' || !campaign.deliveryChannel;
+
+    if (isEmailDelivery) {
+        if (!formData.email) {
+            errors.email = 'メールアドレスは必須です。';
+        } else if (formData.email) {
+            // More strict email regex
+            const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+            if (!emailRegex.test(formData.email)) {
+                errors.email = '有効なメールアドレスを入力してください。';
+            }
+        }
     }
     
     formSettings.fields.customFields.forEach(field => {
@@ -103,6 +120,7 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
     sessionStorage.setItem('pendingSubmission', JSON.stringify(submissionData));
     sessionStorage.setItem('lineAuthState', state);
 
+    // Removed hash from redirect URI
     const redirectUri = `${window.location.origin}/line/callback`;
     const lineAuthUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${campaign.lineChannelId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=profile%20openid`;
     
@@ -120,6 +138,10 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
         surveyAnswers,
         };
         await addSubmission(newSubmission);
+        
+        // Mark as submitted in local storage to prevent multiple submissions
+        localStorage.setItem(`fma_submitted_${campaign.id}`, 'true');
+        
         setSubmissionSuccess(true);
     } catch (error) {
         console.error("Error submitting message:", error);
@@ -136,11 +158,24 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
       }
       if (campaign.deliveryType === 'interval' && campaign.deliveryIntervalDays) {
           const deliveryDate = new Date();
-          deliveryDate.setDate(deliveryDate.getDate() + campaign.deliveryIntervalDays);
+          // Ensure deliveryIntervalDays is treated as a number
+          deliveryDate.setDate(deliveryDate.getDate() + Number(campaign.deliveryIntervalDays));
           return `メッセージは ${deliveryDate.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })} 頃に配信予定です。`;
       }
       return 'メッセージは後日配信されます。';
   };
+  
+  if (hasAlreadySubmitted) {
+      return (
+        <div className="text-center p-8 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
+            <h2 className="text-xl font-bold text-gray-700">既に参加済みです</h2>
+            <p className="text-gray-600 mt-2">
+                このキャンペーンへのメッセージは既に送信されています。<br/>
+                ご参加ありがとうございました。
+            </p>
+        </div>
+      );
+  }
 
   return (
     <>
@@ -215,7 +250,7 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
           </div>
         )}
 
-        {campaign.deliveryChannel === 'email' && formSettings.fields.email.enabled && (
+        {campaign.deliveryChannel === 'email' && (
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700">{formSettings.fields.email.label}</label>
             <input
@@ -224,7 +259,7 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
               name="email"
               onChange={handleInputChange}
               className="mt-1 block w-full p-3 rounded-md border border-gray-300 shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/50"
-              required={formSettings.fields.email.required}
+              required
               placeholder="example@email.com"
             />
              {formErrors.email && <p className="text-red-500 text-sm mt-1">{formErrors.email}</p>}

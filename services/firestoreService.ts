@@ -18,6 +18,11 @@ const fromFirestore = <T extends {id: string}>(doc: firebase.firestore.DocumentS
     } as T;
 };
 
+// Helper to sanitize data (remove undefined values)
+const sanitizeData = (data: any): any => {
+    return JSON.parse(JSON.stringify(data));
+};
+
 // File Upload
 export const uploadFile = async (path: string, file: File): Promise<string> => {
     const storageRef = storage.ref(path);
@@ -71,14 +76,14 @@ export const getCampaign = async (id: string): Promise<Campaign | null> => {
 
 export const addCampaign = async (campaignData: Omit<Campaign, 'id'>): Promise<string> => {
     // FIX: addDoc() is collection.add() in v8.
-    const docRef = await campaignCollection.add(campaignData);
+    const docRef = await campaignCollection.add(sanitizeData(campaignData));
     return docRef.id;
 };
 
 export const updateCampaign = async (id: string, campaignData: Partial<Omit<Campaign, 'id'>>): Promise<void> => {
     // FIX: doc() and updateDoc() are replaced by collection.doc().update() in v8.
     const docRef = db.collection('campaigns').doc(id);
-    await docRef.update(campaignData);
+    await docRef.update(sanitizeData(campaignData));
 };
 
 export const deleteCampaign = async (id: string): Promise<void> => {
@@ -103,7 +108,9 @@ export const deleteCampaign = async (id: string): Promise<void> => {
 // Submission Functions
 export const addSubmission = async (submissionData: Omit<Submission, 'id'>): Promise<string> => {
     // FIX: addDoc() is collection.add() in v8.
-    const docRef = await submissionCollection.add(submissionData);
+    // Ensure data is sanitized (no undefined values) before sending to Firestore
+    const cleanData = sanitizeData(submissionData);
+    const docRef = await submissionCollection.add(cleanData);
     return docRef.id;
 };
 

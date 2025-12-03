@@ -50,7 +50,7 @@ const AdminLayout: React.FC = () => {
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
-              <span className="text-xl font-semibold text-gray-800">管理パネル</span>
+              <span className="text-xl font-semibold text-gray-800">未来メッセージ</span>
             </div>
             <div className="flex items-center">
               <button

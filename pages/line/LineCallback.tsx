@@ -68,6 +68,7 @@ const LineCallback: React.FC = () => {
         // ** SECURITY WARNING **
         // In a production app, the token exchange MUST happen on a backend server
         // to keep the Channel Secret secure. Exposing it on the client-side is a major risk.
+        // Removed hash from redirect URI
         const tokenResponse = await fetch('https://api.line.me/oauth2/v2.1/token', {
           method: 'POST',
           headers: {
@@ -107,6 +108,8 @@ const LineCallback: React.FC = () => {
             setIsSurveyOpen(true);
         } else {
             await addSubmission(submissionWithUser);
+            // Mark as submitted
+            localStorage.setItem(`fma_submitted_${fetchedCampaign.id}`, 'true');
             setStatus('success');
         }
 
@@ -132,6 +135,9 @@ const LineCallback: React.FC = () => {
     try {
         const finalSubmission: Omit<Submission, 'id'> = { ...pendingSubmissionData, surveyAnswers };
         await addSubmission(finalSubmission);
+        if (campaign) {
+          localStorage.setItem(`fma_submitted_${campaign.id}`, 'true');
+        }
         setStatus('success');
     } catch (error: any) {
         console.error('Final submission error:', error);
@@ -147,7 +153,8 @@ const LineCallback: React.FC = () => {
       }
       if (campaign.deliveryType === 'interval' && campaign.deliveryIntervalDays) {
           const deliveryDate = new Date();
-          deliveryDate.setDate(deliveryDate.getDate() + campaign.deliveryIntervalDays);
+          // Ensure number conversion
+          deliveryDate.setDate(deliveryDate.getDate() + Number(campaign.deliveryIntervalDays));
           return `メッセージは ${deliveryDate.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })} 頃に配信予定です。`;
       }
       return 'メッセージは後日配信されます。';

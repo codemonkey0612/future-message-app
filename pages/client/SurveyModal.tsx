@@ -42,15 +42,15 @@ const SurveyModal: React.FC<SurveyModalProps> = ({ survey, onClose, onSubmit }) 
           <div className="space-y-6">
             {survey.questions.map(q => (
               <div key={q.id}>
-                <label className="block text-sm font-medium text-gray-700">{q.text} {q.required && '*'}</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{q.text} {q.required && '*'}</label>
                 {q.type === 'text' && (
-                  <input type="text" onChange={(e) => handleAnswerChange(q.id, e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary" />
+                  <input type="text" onChange={(e) => handleAnswerChange(q.id, e.target.value)} className="mt-1 block w-full p-3 rounded-md border border-gray-300 shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/50" />
                 )}
                 {q.type === 'textarea' && (
-                  <textarea onChange={(e) => handleAnswerChange(q.id, e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary" rows={4} />
+                  <textarea onChange={(e) => handleAnswerChange(q.id, e.target.value)} className="mt-1 block w-full p-3 rounded-md border border-gray-300 shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/50" rows={4} />
                 )}
                 {q.type === 'select' && (
-                  <select onChange={(e) => handleAnswerChange(q.id, e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary">
+                  <select onChange={(e) => handleAnswerChange(q.id, e.target.value)} className="mt-1 block w-full p-3 rounded-md border border-gray-300 shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/50">
                     <option value="">選択してください</option>
                     {q.options?.map(opt => (
                       <option key={opt} value={opt}>{opt}</option>

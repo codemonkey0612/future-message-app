@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 // FIX: Removed v9 'signInWithEmailAndPassword' import for v8 compatibility.
 import { auth } from '../../services/firebase';
+import { handleError, showError, ErrorCode } from '../../utils/errorHandler';
 
 const AdminLogin: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -24,13 +25,10 @@ const AdminLogin: React.FC = () => {
       // FIX: Used v8 auth.signInWithEmailAndPassword method.
       await auth.signInWithEmailAndPassword(email, password);
       navigate('/admin/clients');
-    } catch (error: any) {
-      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
-        setError('メールアドレスまたはパスワードが無効です。');
-      } else {
-        setError('ログイン中にエラーが発生しました。');
-      }
-      console.error(error);
+    } catch (error: unknown) {
+      const appError = handleError(error);
+      setError(appError.message);
+      showError(appError);
     } finally {
       setIsLoading(false);
     }

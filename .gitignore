@@ -16,11 +16,9 @@ dist-ssr
 .env
 .env.local
 .env.*.local
-
 # Firebase
 firebase-debug.log
 .firebase/
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

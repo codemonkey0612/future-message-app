@@ -210,15 +210,24 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
           <div>
             <label className="block text-sm font-medium text-gray-700">{formSettings.fields.image.label}</label>
              <div 
-                className="mt-2 flex justify-center items-center rounded-lg border border-dashed border-gray-900/25 px-6 py-10 text-center relative cursor-pointer hover:border-primary transition-colors"
+                className="mt-2 flex justify-center items-center rounded-lg border border-dashed border-gray-900/25 px-6 py-8 text-center relative cursor-pointer hover:border-primary hover:bg-gray-50 transition-all group"
                 onClick={() => document.getElementById('image')?.click()}
             >
                 <input type="file" id="image" name="image" accept="image/*" onChange={handleImageChange} className="sr-only" />
                 {imagePreview ? (
-                    <img src={imagePreview} alt="Preview" className="max-h-48 rounded-lg object-contain mx-auto" />
+                     <div className="flex flex-col items-center w-full">
+                        <div className="relative">
+                            <img src={imagePreview} alt="Preview" className="max-h-64 w-auto rounded-lg object-contain shadow-md" />
+                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-5 transition-all duration-200 rounded-lg"></div>
+                        </div>
+                        <p className="mt-4 text-sm font-medium text-primary bg-white px-4 py-2 rounded-full shadow-sm border border-gray-200 flex items-center gap-2 group-hover:bg-primary group-hover:text-white transition-colors">
+                             <ArrowUpTrayIcon className="w-4 h-4" />
+                             写真を変更する
+                        </p>
+                    </div>
                 ) : (
                     <div>
-                        <ArrowUpTrayIcon className="mx-auto h-12 w-12 text-gray-300" />
+                        <ArrowUpTrayIcon className="mx-auto h-12 w-12 text-gray-300 group-hover:text-primary transition-colors" />
                         <p className="mt-2 text-sm text-gray-600">
                             <span className="font-semibold" style={{ color: campaign.settings.design.themeColor }}>{uploadText}</span>
                         </p>

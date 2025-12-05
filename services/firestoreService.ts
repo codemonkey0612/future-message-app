@@ -3,6 +3,7 @@ import { db, storage } from './firebase';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 import { Campaign, Client, Submission } from '../types';
+import { sanitizeFormData, sanitizeObject } from '../utils/validation';
 
 // FIX: collection() is a method on the db object in v8.
 const campaignCollection = db.collection('campaigns');
@@ -108,8 +109,12 @@ export const deleteCampaign = async (id: string): Promise<void> => {
 // Submission Functions
 export const addSubmission = async (submissionData: Omit<Submission, 'id'>): Promise<string> => {
     // FIX: addDoc() is collection.add() in v8.
-    // Ensure data is sanitized (no undefined values) before sending to Firestore
-    const cleanData = sanitizeData(submissionData);
+    // Sanitize form data and remove undefined values before sending to Firestore
+    const sanitizedFormData = submissionData.formData ? sanitizeFormData(submissionData.formData) : {};
+    const cleanData = sanitizeData({
+        ...submissionData,
+        formData: sanitizedFormData
+    });
     const docRef = await submissionCollection.add(cleanData);
     return docRef.id;
 };

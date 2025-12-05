@@ -1,0 +1,44 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return isAuthenticated();
+    }
+    
+    // Campaign images - admins can upload, public can read
+    match /campaigns/{campaignId}/{allPaths=**} {
+      // Admins can upload and delete
+      allow write: if isAdmin() && 
+                     request.resource.size < 10 * 1024 * 1024 && // 10MB limit
+                     request.resource.contentType.matches('image/.*');
+      
+      // Public can read campaign images
+      allow read: if true;
+    }
+    
+    // User uploaded images (submissions) - public can upload, admins can read/delete
+    match /submissions/{submissionId}/{allPaths=**} {
+      // Anyone can upload submission images
+      allow write: if request.resource.size < 10 * 1024 * 1024 && // 10MB limit
+                     request.resource.contentType.matches('image/.*');
+      
+      // Admins can read and delete
+      allow read, delete: if isAdmin();
+      
+      // Public can read their own submissions (optional - remove if not needed)
+      allow read: if true;
+    }
+    
+    // Deny all other access
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

@@ -4,6 +4,7 @@ import { addSubmission, getCampaign } from '../../services/firestoreService';
 import { Campaign, Submission } from '../../types';
 import Spinner from '../../components/common/Spinner';
 import SurveyModal from '../client/SurveyModal';
+import { functions } from '../../services/firebase';
 
 const LineCallback: React.FC = () => {
   const [status, setStatus] = useState<'processing' | 'awaiting_survey' | 'success' | 'error'>('processing');
@@ -65,33 +66,18 @@ const LineCallback: React.FC = () => {
         }
         setCampaign(fetchedCampaign);
 
-        // ** SECURITY WARNING **
-        // In a production app, the token exchange MUST happen on a backend server
-        // to keep the Channel Secret secure. Exposing it on the client-side is a major risk.
-        // Removed hash from redirect URI
-        const tokenResponse = await fetch('https://api.line.me/oauth2/v2.1/token', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: new URLSearchParams({
-            grant_type: 'authorization_code',
-            code,
-            redirect_uri: `${window.location.origin}/line/callback`,
-            client_id: fetchedCampaign.lineChannelId,
-            client_secret: fetchedCampaign.lineChannelSecret,
-          }),
+        // Use Firebase Function to securely exchange LINE token
+        // This keeps the Channel Secret on the server
+        const exchangeLineToken = functions.httpsCallable('exchangeLineToken');
+        
+        const redirectUri = `${window.location.origin}/line/callback`;
+        const result = await exchangeLineToken({
+          code,
+          redirectUri,
+          campaignId: fetchedCampaign.id,
         });
         
-        const tokenData = await tokenResponse.json();
-
-        if (!tokenResponse.ok || !tokenData.id_token) {
-          throw new Error(tokenData.error_description || 'LINEトークンの取得に失敗しました。');
-        }
-        
-        // Decode ID token to get user ID (sub) without needing a library for simplicity
-        const idTokenPayload = JSON.parse(atob(tokenData.id_token.split('.')[1]));
-        const lineUserId = idTokenPayload.sub;
+        const { lineUserId } = result.data as { lineUserId: string; success: boolean };
 
         if (!lineUserId) {
             throw new Error('LINEユーザーIDの取得に失敗しました。')

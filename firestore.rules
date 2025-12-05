@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user is admin (you can customize this based on your auth setup)
+    function isAdmin() {
+      return isAuthenticated();
+      // If you have custom claims or user roles, check them here:
+      // return isAuthenticated() && request.auth.token.admin == true;
+    }
+    
+    // Clients collection - only admins can read/write
+    match /clients/{clientId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // Campaigns collection - admins can read/write, public can read published campaigns
+    match /campaigns/{campaignId} {
+      // Admins can do everything
+      allow read, write: if isAdmin();
+      
+      // Public can read campaigns that are within publish period
+      allow read: if resource.data.publishStart <= request.time && 
+                     resource.data.publishEnd >= request.time;
+    }
+    
+    // Submissions collection - admins can read, public can create
+    match /submissions/{submissionId} {
+      // Admins can read all submissions
+      allow read: if isAdmin();
+      
+      // Anyone can create submissions (for public form submissions)
+      allow create: if request.resource.data.keys().hasAll(['campaignId', 'submittedAt', 'deliveryChoice', 'formData', 'surveyAnswers']) &&
+                       request.resource.data.campaignId is string &&
+                       request.resource.data.submittedAt is string &&
+                       request.resource.data.deliveryChoice in ['email', 'line'] &&
+                       request.resource.data.formData is map &&
+                       request.resource.data.surveyAnswers is map;
+      
+      // No updates or deletes by public
+      allow update, delete: if false;
+    }
+    
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

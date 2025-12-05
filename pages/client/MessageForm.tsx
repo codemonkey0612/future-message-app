@@ -4,6 +4,7 @@ import { addSubmission } from '../../services/firestoreService';
 import SurveyModal from './SurveyModal';
 import Spinner from '../../components/common/Spinner';
 import ArrowUpTrayIcon from '../../components/icons/ArrowUpTrayIcon';
+import { validateEmail, sanitizeString, sanitizeFormData } from '../../utils/validation';
 
 interface MessageFormProps {
   campaign: Campaign;
@@ -64,10 +65,9 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
     if (isEmailDelivery) {
         if (!formData.email) {
             errors.email = 'メールアドレスは必須です。';
-        } else if (formData.email) {
-            // More strict email regex
-            const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-            if (!emailRegex.test(formData.email)) {
+        } else {
+            const emailValidation = validateEmail(formData.email);
+            if (!emailValidation.isValid) {
                 errors.email = '有効なメールアドレスを入力してください。';
             }
         }
@@ -108,11 +108,13 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
       return;
     }
     setIsSubmitting(true);
+    // Sanitize form data before storing in session
+    const sanitizedFormData = sanitizeFormData(formData);
     const submissionData = {
         campaignId: campaign.id,
         submittedAt: new Date().toISOString(),
         deliveryChoice: 'line' as const,
-        formData,
+        formData: sanitizedFormData,
         surveyAnswers: {}, // Will be filled in after auth
     };
 
@@ -130,11 +132,13 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
   const finalizeEmailSubmission = async (surveyAnswers: any) => {
     setIsSubmitting(true);
     try {
+        // Sanitize form data before submission
+        const sanitizedFormData = sanitizeFormData(formData);
         const newSubmission: Omit<Submission, 'id'> = {
         campaignId: campaign.id,
         submittedAt: new Date().toISOString(),
         deliveryChoice: 'email',
-        formData,
+        formData: sanitizedFormData,
         surveyAnswers,
         };
         await addSubmission(newSubmission);

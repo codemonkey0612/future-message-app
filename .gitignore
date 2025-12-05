@@ -16,7 +16,6 @@ dist-ssr
 .env
 .env.local
 .env.*.local
-
 # Firebase
 firebase-debug.log
 .firebase/

@@ -16,10 +16,8 @@ const firebaseConfig = {
   appId: "1:1098464730836:web:2257fb08f717e3dc236541"
 };
 
-// A check to remind the user to add their config.
-if (firebaseConfig.apiKey === "AIzaSyBHT8pDHTO7F2C30NO8feeP5eQjFyLIquQ") {
-    console.warn("Firebase is not configured. Please add your Firebase project configuration in services/firebase.ts");
-}
+// Firebase configuration is set up correctly
+// All required fields are configured for the futuremessage-app project
 
 
 // Initialize Firebase

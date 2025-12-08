@@ -27,7 +27,11 @@ const sanitizeData = (data: any): any => {
 // File Upload
 export const uploadFile = async (path: string, file: File): Promise<string> => {
     const storageRef = storage.ref(path);
-    const snapshot = await storageRef.put(file);
+    const metadata = {
+        contentType: file.type,
+        cacheControl: 'public, max-age=31536000', // Cache for 1 year
+    };
+    const snapshot = await storageRef.put(file, metadata);
     const downloadURL = await snapshot.ref.getDownloadURL();
     return downloadURL;
 };

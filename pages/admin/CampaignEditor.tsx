@@ -1,4 +1,4 @@
-import React, { useState, useEffect, ChangeEvent } from 'react';
+import React, { useState, useEffect, ChangeEvent, useContext } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Campaign, CustomFieldSetting, Submission, SurveyQuestion, FaqItem, HowToSettings, Host } from '../../types';
 import { getCampaign, addCampaign, updateCampaign, getSubmissionsForCampaign, uploadFile, getClient } from '../../services/firestoreService';
@@ -8,6 +8,8 @@ import PlusIcon from '../../components/icons/PlusIcon';
 import ClipboardIcon from '../../components/icons/ClipboardIcon';
 import CampaignDashboard from '../../components/admin/CampaignDashboard';
 import Breadcrumbs from '../../components/common/Breadcrumbs';
+import { AppContext } from '../../context/AppContext';
+import { auth } from '../../services/firebase';
 
 const ImageUpload: React.FC<{
   label: string;
@@ -18,26 +20,78 @@ const ImageUpload: React.FC<{
 }> = ({ label, currentImageUrl, onImageUploaded, campaignId, path }) => {
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<string | null>(currentImageUrl);
+  const [error, setError] = useState<string | null>(null);
+  const { state } = useContext(AppContext);
 
   useEffect(() => {
     setPreview(currentImageUrl);
   }, [currentImageUrl]);
 
+  const validateFile = (file: File): string | null => {
+    // Check file type
+    if (!file.type.startsWith('image/')) {
+      return '画像ファイルを選択してください。';
+    }
+
+    // Check file size (10MB limit)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+      return 'ファイルサイズは10MB以下にしてください。';
+    }
+
+    return null;
+  };
+
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setUploading(true);
-      try {
-        const filePath = `campaigns/${campaignId}/${path}/${Date.now()}_${file.name}`;
-        const downloadURL = await uploadFile(filePath, file);
-        onImageUploaded(downloadURL);
-        setPreview(downloadURL);
-      } catch (error) {
-        console.error("Image upload failed:", error);
-        alert("画像のアップロードに失敗しました。");
-      } finally {
-        setUploading(false);
+    if (!file) return;
+
+    // Clear previous errors
+    setError(null);
+
+    // Validate file
+    const validationError = validateFile(file);
+    if (validationError) {
+      setError(validationError);
+      e.target.value = ''; // Reset input
+      return;
+    }
+
+    // Check authentication
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      setError('ログインが必要です。ページを再読み込みしてください。');
+      e.target.value = '';
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const filePath = `campaigns/${campaignId}/${path}/${Date.now()}_${file.name}`;
+      const downloadURL = await uploadFile(filePath, file);
+      onImageUploaded(downloadURL);
+      setPreview(downloadURL);
+      setError(null);
+    } catch (error: any) {
+      console.error("Image upload failed:", error);
+      
+      // Provide specific error messages
+      let errorMessage = "画像のアップロードに失敗しました。";
+      
+      if (error.code === 'storage/unauthorized') {
+        errorMessage = 'アップロード権限がありません。ログイン状態を確認してください。';
+      } else if (error.code === 'storage/canceled') {
+        errorMessage = 'アップロードがキャンセルされました。';
+      } else if (error.code === 'storage/unknown') {
+        errorMessage = '不明なエラーが発生しました。Firebase Storageが有効になっているか確認してください。';
+      } else if (error.message) {
+        errorMessage = error.message;
       }
+      
+      setError(errorMessage);
+      e.target.value = ''; // Reset input
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -48,13 +102,18 @@ const ImageUpload: React.FC<{
         {preview && (
           <img src={preview} alt="Preview" className="w-32 h-16 object-cover rounded-md bg-gray-100" />
         )}
-        <input
-          type="file"
-          accept="image/*"
-          onChange={handleFileChange}
-          disabled={uploading}
-          className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-        />
+        <div className="flex-1">
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleFileChange}
+            disabled={uploading}
+            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
+          />
+          {error && (
+            <p className="mt-1 text-sm text-red-600">{error}</p>
+          )}
+        </div>
         {uploading && <Spinner />}
       </div>
     </div>

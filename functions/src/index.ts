@@ -41,7 +41,7 @@ const emailTransporter = getEmailTransporter();
  * Exchange LINE OAuth authorization code for access token
  * This keeps the LINE Channel Secret secure on the server
  */
-export const exchangeLineToken = functions.https.onCall(async (data, context) => {
+export const exchangeLineToken = functions.region('asia-northeast1').https.onCall(async (data, context) => {
   // Verify the request is authenticated (optional - remove if you want public access)
   // if (!context.auth) {
   //   throw new functions.https.HttpsError(
@@ -227,7 +227,7 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
  * Send email message to user
  * Triggered by scheduled function or manually
  */
-export const sendEmailMessage = functions.https.onCall(async (data, context) => {
+export const sendEmailMessage = functions.region('asia-northeast1').https.onCall(async (data, context) => {
   const { submissionId, campaignId } = data as { submissionId?: string; campaignId?: string };
 
   if (!submissionId || !campaignId) {
@@ -350,7 +350,7 @@ async function sendLineHelper(submissionId: string, campaignId: string): Promise
  * Send LINE message to user
  * Triggered by scheduled function or manually
  */
-export const sendLineMessage = functions.https.onCall(async (data, context) => {
+export const sendLineMessage = functions.region('asia-northeast1').https.onCall(async (data, context) => {
   const { submissionId, campaignId } = data as { submissionId?: string; campaignId?: string };
 
   if (!submissionId || !campaignId) {
@@ -376,7 +376,7 @@ export const sendLineMessage = functions.https.onCall(async (data, context) => {
  * Scheduled function to process pending message deliveries
  * Runs daily to check for messages that need to be delivered
  */
-export const processScheduledDeliveries = functions.pubsub
+export const processScheduledDeliveries = functions.region('asia-northeast1').pubsub
   .schedule("every 1 hours")
   .timeZone("Asia/Tokyo")
   .onRun(async (context) => {

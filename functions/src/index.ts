@@ -1,4 +1,4 @@
-import * as functions from "firebase-functions";
+import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const nodemailer = require("nodemailer");
@@ -6,11 +6,15 @@ const nodemailer = require("nodemailer");
 admin.initializeApp();
 
 // Initialize email transporter with custom SMTP configuration
-// Configuration is set via Firebase Functions config:
-// firebase functions:config:set smtp.host="smtp.futuremessage-app.com" smtp.port="587" email.user="mail@futuremessage-app.com" email.password="your-password"
+// Configuration is set via environment variables:
+// firebase functions:secrets:set SMTP_HOST
+// firebase functions:secrets:set SMTP_PORT
+// firebase functions:secrets:set EMAIL_USER
+// firebase functions:secrets:set EMAIL_PASSWORD
+// Or set them in .env file for local development
 const getEmailTransporter = () => {
-  const smtpHost = functions.config().smtp?.host || process.env.SMTP_HOST || "smtp.futuremessage-app.com";
-  const smtpPort = parseInt(functions.config().smtp?.port || process.env.SMTP_PORT || "587");
+  const smtpHost = process.env.SMTP_HOST || "smtp.futuremessage-app.com";
+  const smtpPort = parseInt(process.env.SMTP_PORT || "587");
   const smtpSecure = smtpPort === 465; // SSL uses port 465
   
   return nodemailer.createTransport({
@@ -18,8 +22,8 @@ const getEmailTransporter = () => {
     port: smtpPort,
     secure: smtpSecure, // true for 465, false for other ports
     auth: {
-      user: functions.config().email?.user || process.env.EMAIL_USER || "mail@futuremessage-app.com",
-      pass: functions.config().email?.password || process.env.EMAIL_PASSWORD || "",
+      user: process.env.EMAIL_USER || "mail@futuremessage-app.com",
+      pass: process.env.EMAIL_PASSWORD || "",
     },
     // TLS options for port 587
     ...(smtpPort === 587 && {
@@ -46,7 +50,7 @@ export const exchangeLineToken = functions.https.onCall(async (data, context) =>
   //   );
   // }
 
-  const { code, redirectUri, campaignId } = data;
+  const { code, redirectUri, campaignId } = data as { code?: string; redirectUri?: string; campaignId?: string };
 
   // Validate input
   if (!code || !redirectUri || !campaignId) {
@@ -170,30 +174,44 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
   let emailBody = emailTemplate.body || "";
 
   // Replace placeholders in email body
+  // Handle submittedAt - could be ISO string or Firestore Timestamp
+  let submittedAtDate: Date;
+  if (submission.submittedAt instanceof admin.firestore.Timestamp) {
+    submittedAtDate = submission.submittedAt.toDate();
+  } else if (typeof submission.submittedAt === "string") {
+    submittedAtDate = new Date(submission.submittedAt);
+  } else {
+    submittedAtDate = new Date();
+  }
+  
   emailBody = emailBody
     .replace(/\{message\}/g, submission.formData?.message || "")
     .replace(/\{email\}/g, submission.formData?.email || "")
-    .replace(/\{submittedAt\}/g, new Date(submission.submittedAt).toLocaleString("ja-JP"));
+    .replace(/\{submittedAt\}/g, submittedAtDate.toLocaleString("ja-JP"));
+
+  // Validate recipient email
+  const recipientEmail = submission.formData?.email;
+  if (!recipientEmail || typeof recipientEmail !== "string" || !recipientEmail.includes("@")) {
+    throw new Error("Invalid or missing recipient email address");
+  }
 
   // Send email
   const fromEmail = campaign.settings?.form?.fromEmail || 
-                   functions.config().email?.user || 
+                   process.env.EMAIL_USER || 
                    "mail@futuremessage-app.com";
+  
+  // Prepare HTML body with image if available
+  let htmlBody = emailBody.replace(/\n/g, "<br>");
+  if (submission.formData?.imageUrl) {
+    // Embed image in HTML instead of attachment (since imageUrl is a URL, not a local path)
+    htmlBody += `<br><br><img src="${submission.formData.imageUrl}" alt="Message image" style="max-width: 100%; height: auto;">`;
+  }
   
   const mailOptions = {
     from: `"${campaign.name || 'Future Message App'}" <${fromEmail}>`,
-    to: submission.formData?.email,
+    to: recipientEmail,
     subject: emailSubject,
-    html: emailBody.replace(/\n/g, "<br>"),
-    // Optional: attach image if available
-    attachments: submission.formData?.imageUrl
-      ? [
-          {
-            filename: "message-image.jpg",
-            path: submission.formData.imageUrl,
-          },
-        ]
-      : [],
+    html: htmlBody,
   };
 
   await emailTransporter.sendMail(mailOptions);
@@ -210,7 +228,7 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
  * Triggered by scheduled function or manually
  */
 export const sendEmailMessage = functions.https.onCall(async (data, context) => {
-  const { submissionId, campaignId } = data;
+  const { submissionId, campaignId } = data as { submissionId?: string; campaignId?: string };
 
   if (!submissionId || !campaignId) {
     throw new functions.https.HttpsError(
@@ -333,7 +351,7 @@ async function sendLineHelper(submissionId: string, campaignId: string): Promise
  * Triggered by scheduled function or manually
  */
 export const sendLineMessage = functions.https.onCall(async (data, context) => {
-  const { submissionId, campaignId } = data;
+  const { submissionId, campaignId } = data as { submissionId?: string; campaignId?: string };
 
   if (!submissionId || !campaignId) {
     throw new functions.https.HttpsError(
@@ -402,9 +420,19 @@ export const processScheduledDeliveries = functions.pubsub
             campaign.deliveryType === "interval" &&
             campaign.deliveryIntervalDays
           ) {
-            const submissionTime = admin.firestore.Timestamp.fromDate(
-              new Date(submission.submittedAt)
-            );
+            // Handle submittedAt - could be ISO string or Firestore Timestamp
+            let submissionTime: admin.firestore.Timestamp;
+            if (submission.submittedAt instanceof admin.firestore.Timestamp) {
+              submissionTime = submission.submittedAt;
+            } else if (typeof submission.submittedAt === "string") {
+              submissionTime = admin.firestore.Timestamp.fromDate(
+                new Date(submission.submittedAt)
+              );
+            } else {
+              // Fallback to current time if invalid
+              submissionTime = now;
+            }
+            
             const deliveryTime = admin.firestore.Timestamp.fromMillis(
               submissionTime.toMillis() +
                 campaign.deliveryIntervalDays * 24 * 60 * 60 * 1000

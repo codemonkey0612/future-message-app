@@ -34,9 +34,6 @@ const getEmailTransporter = () => {
   });
 };
 
-// Create transporter instance
-const emailTransporter = getEmailTransporter();
-
 /**
  * Exchange LINE OAuth authorization code for access token
  * This keeps the LINE Channel Secret secure on the server
@@ -214,6 +211,8 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
     html: htmlBody,
   };
 
+  // Create transporter on each call to use current environment variables
+  const emailTransporter = getEmailTransporter();
   await emailTransporter.sendMail(mailOptions);
 
   // Mark submission as delivered

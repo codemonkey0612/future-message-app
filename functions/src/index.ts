@@ -22,8 +22,8 @@ const getEmailTransporter = () => {
     port: smtpPort,
     secure: smtpSecure, // true for 465, false for other ports
     auth: {
-      user: process.env.EMAIL_USER || "mail@futuremessage-app.com",
-      pass: process.env.EMAIL_PASSWORD || "",
+      user: "mail@futuremessage-app.com",
+      pass: "mail-mht54354029",
     },
     // TLS options for port 587
     ...(smtpPort === 587 && {

@@ -21,14 +21,13 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
     
-    // Campaigns collection - admins can read/write, public can read published campaigns
+    // Campaigns collection - admins can read/write, public can read all campaigns
     match /campaigns/{campaignId} {
       // Admins can do everything
       allow read, write: if isAdmin();
       
-      // Public can read campaigns that are within publish period
-      allow read: if resource.data.publishStart <= request.time && 
-                     resource.data.publishEnd >= request.time;
+      // Public can read all campaigns (for public campaign pages)
+      allow read: if true;
     }
     
     // Submissions collection - admins can read, public can create

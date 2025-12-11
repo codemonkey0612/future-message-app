@@ -1,4 +1,19 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #0284c7; /* sky-600 */
+  --color-primary-hover: #0369a1; /* sky-700 */
+  --color-secondary: #f0f9ff; /* sky-50 */
+  --color-accent: #fbbf24; /* amber-400 */
+}
+
+@source "../index.html";
+@source "../index.tsx";
+@source "../App.tsx";
+@source "../pages/**/*.{js,ts,jsx,tsx}";
+@source "../components/**/*.{js,ts,jsx,tsx}";
+@source "../context/**/*.{js,ts,jsx,tsx}";
+@source "../hooks/**/*.{js,ts,jsx,tsx}";
+@source "../services/**/*.{js,ts,jsx,tsx}";
+@source "../utils/**/*.{js,ts,jsx,tsx}";
 

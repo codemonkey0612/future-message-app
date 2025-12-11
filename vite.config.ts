@@ -22,6 +22,7 @@ export default defineConfig(({ mode }) => {
       build: {
         outDir: 'dist',
         assetsDir: 'assets',
+        base: '/', // Ensure base path is root for Firebase Hosting
         rollupOptions: {
           output: {
             manualChunks: (id) => {

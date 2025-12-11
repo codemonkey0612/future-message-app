@@ -224,13 +224,9 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
   const emailTransporter = getEmailTransporter();
   
   // Log email attempt for debugging
-  console.log(`Attempting to send email:`, {
-    from: fromEmail,
-    to: recipientEmail,
-    subject: emailSubject,
-    smtpHost: process.env.SMTP_HOST || "smtp.futuremessage-app.com",
-    smtpPort: process.env.SMTP_PORT || "587",
-  });
+  console.log(`[sendEmailHelper] Attempting to send email to ${recipientEmail} from ${fromEmail}`);
+  console.log(`[sendEmailHelper] Email subject: ${emailSubject}`);
+  console.log(`[sendEmailHelper] SMTP config: host=${process.env.SMTP_HOST || 'NOT SET'}, port=${process.env.SMTP_PORT || 'NOT SET'}, user=${process.env.EMAIL_USER ? 'SET' : 'NOT SET'}`);
   
   try {
     const info = await emailTransporter.sendMail(mailOptions);
@@ -261,15 +257,20 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
   }
 
   // Mark submission as delivered only after successful send
-  // Note: deliveredAt was set to the scheduled delivery time when submission was created
-  // We keep it as the scheduled time, only update delivered to true
+  // Update deliveredAt to the actual delivery time (when email was sent)
+  const actualDeliveryTime = admin.firestore.Timestamp.now();
   const updateData: any = {
     delivered: true,
-    // deliveredAt stays as the scheduled time (set when submission was created)
+    deliveredAt: actualDeliveryTime, // Update to actual delivery time
   };
   
-  console.log(`[sendEmailHelper] Updating submission ${submissionId} with delivered=true`);
+  console.log(`[sendEmailHelper] Updating submission ${submissionId} with delivered=true, deliveredAt=${actualDeliveryTime.toDate().toISOString()}`);
   await submissionDoc.ref.update(updateData);
+  
+  // Verify the update was successful
+  const updatedDoc = await submissionDoc.ref.get();
+  const updatedData = updatedDoc.data();
+  console.log(`[sendEmailHelper] After update - delivered: ${updatedData?.delivered}, deliveredAt: ${updatedData?.deliveredAt ? (updatedData.deliveredAt.toDate ? updatedData.deliveredAt.toDate().toISOString() : updatedData.deliveredAt) : 'MISSING'}`);
   console.log(`[sendEmailHelper] Successfully updated submission ${submissionId}`);
 }
 
@@ -390,12 +391,13 @@ async function sendLineHelper(submissionId: string, campaignId: string): Promise
   }
 
   // Mark submission as delivered
-  // Note: deliveredAt was set to the scheduled delivery time when submission was created
-  // We keep it as the scheduled time, only update delivered to true
+  // Update deliveredAt to the actual delivery time (when LINE message was sent)
+  const actualDeliveryTime = admin.firestore.Timestamp.now();
   await submissionDoc.ref.update({
     delivered: true,
-    // deliveredAt stays as the scheduled time (set when submission was created)
+    deliveredAt: actualDeliveryTime, // Update to actual delivery time
   });
+  console.log(`[sendLineHelper] Updated submission ${submissionId} with delivered=true, deliveredAt=${actualDeliveryTime.toDate().toISOString()}`);
 }
 
 /**

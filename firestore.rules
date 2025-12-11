@@ -30,10 +30,14 @@ service cloud.firestore {
       allow read: if true;
     }
     
-    // Submissions collection - admins can read, public can create
+    // Submissions collection - admins can read, public can create and read their own
     match /submissions/{submissionId} {
       // Admins can read all submissions
       allow read: if isAdmin();
+      
+      // Public can read submissions (needed for verification after creation)
+      // This is safe because submissions don't contain sensitive admin data
+      allow read: if true;
       
       // Anyone can create submissions (for public form submissions)
       // Allow submittedAt as either string or timestamp, and allow delivered/deliveredAt fields

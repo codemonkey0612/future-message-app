@@ -440,14 +440,20 @@ export const processScheduledDeliveries = functions.region('asia-northeast1').pu
         const campaignId = campaignDoc.id;
 
         // Get all undelivered submissions for this campaign
-        const submissionsSnapshot = await admin
+        // Query for submissions where delivered is false OR doesn't exist
+        const allSubmissionsSnapshot = await admin
           .firestore()
           .collection("submissions")
           .where("campaignId", "==", campaignId)
-          .where("delivered", "==", false)
           .get();
+        
+        // Filter to only get undelivered submissions (delivered === false or field doesn't exist)
+        const undeliveredSubmissions = allSubmissionsSnapshot.docs.filter(doc => {
+          const data = doc.data();
+          return data.delivered !== true; // Include if delivered is false, undefined, or null
+        });
 
-        for (const submissionDoc of submissionsSnapshot.docs) {
+        for (const submissionDoc of undeliveredSubmissions) {
           const submission = submissionDoc.data();
           const submissionId = submissionDoc.id;
 

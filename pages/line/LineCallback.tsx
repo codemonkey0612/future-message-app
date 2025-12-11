@@ -86,6 +86,7 @@ const LineCallback: React.FC = () => {
         const submissionWithUser: Omit<Submission, 'id'> = {
           ...pendingSubmission,
           lineUserId,
+          delivered: false, // Initialize as not delivered
         };
 
         if (fetchedCampaign.settings.survey.enabled && fetchedCampaign.settings.survey.questions.length > 0) {
@@ -119,7 +120,11 @@ const LineCallback: React.FC = () => {
     }
     
     try {
-        const finalSubmission: Omit<Submission, 'id'> = { ...pendingSubmissionData, surveyAnswers };
+        const finalSubmission: Omit<Submission, 'id'> = { 
+          ...pendingSubmissionData, 
+          surveyAnswers,
+          delivered: false, // Initialize as not delivered
+        };
         await addSubmission(finalSubmission);
         if (campaign) {
           localStorage.setItem(`fma_submitted_${campaign.id}`, 'true');

@@ -479,24 +479,35 @@ export const processScheduledDeliveries = functions.region('asia-northeast1').pu
           const submissionId = submissionDoc.id;
 
           console.log(`[processScheduledDeliveries] Checking submission ${submissionId}: email=${submission.formData?.email}, deliveryChoice=${submission.deliveryChoice}, campaign.deliveryChannel=${campaign.deliveryChannel}`);
+          console.log(`[processScheduledDeliveries] Submission ${submissionId} deliveredAt:`, submission.deliveredAt, 'type:', submission.deliveredAt ? (submission.deliveredAt instanceof admin.firestore.Timestamp ? 'Timestamp' : typeof submission.deliveredAt) : 'undefined');
 
           let shouldDeliver = false;
           let deliveryTime: admin.firestore.Timestamp | null = null;
 
-          // First, check if submission has deliveredAt set (scheduled delivery time set when submission was created)
-          if (submission.deliveredAt && typeof submission.deliveredAt === 'string') {
-            const scheduledDate = new Date(submission.deliveredAt);
-            deliveryTime = admin.firestore.Timestamp.fromDate(scheduledDate);
-            shouldDeliver = now.toMillis() >= deliveryTime.toMillis();
-            console.log(`[processScheduledDeliveries] Submission ${submissionId}: Using deliveredAt (scheduled time)=${deliveryTime.toDate().toISOString()}, now=${now.toDate().toISOString()}, shouldDeliver=${shouldDeliver}`);
-          } else if (submission.deliveredAt && submission.deliveredAt instanceof admin.firestore.Timestamp) {
-            // If deliveredAt is already a Timestamp (from Firestore), use it directly
-            deliveryTime = submission.deliveredAt;
-            shouldDeliver = now.toMillis() >= deliveryTime.toMillis();
-            console.log(`[processScheduledDeliveries] Submission ${submissionId}: Using deliveredAt (scheduled time, Timestamp)=${deliveryTime.toDate().toISOString()}, now=${now.toDate().toISOString()}, shouldDeliver=${shouldDeliver}`);
+          // PRIORITY 1: Check if submission has deliveredAt set (scheduled delivery time set when submission was created)
+          // This is the preferred method - always use deliveredAt if it exists
+          // Check Timestamp first (most common case now)
+          if (submission.deliveredAt) {
+            if (submission.deliveredAt instanceof admin.firestore.Timestamp) {
+              // If deliveredAt is already a Timestamp (from Firestore), use it directly
+              deliveryTime = submission.deliveredAt;
+              shouldDeliver = now.toMillis() >= deliveryTime.toMillis();
+              console.log(`[processScheduledDeliveries] Submission ${submissionId}: Using deliveredAt (Timestamp)=${deliveryTime.toDate().toISOString()}, now=${now.toDate().toISOString()}, shouldDeliver=${shouldDeliver}`);
+            } else if (typeof submission.deliveredAt === 'string') {
+              // If deliveredAt is a string, parse it
+              const scheduledDate = new Date(submission.deliveredAt);
+              deliveryTime = admin.firestore.Timestamp.fromDate(scheduledDate);
+              shouldDeliver = now.toMillis() >= deliveryTime.toMillis();
+              console.log(`[processScheduledDeliveries] Submission ${submissionId}: Using deliveredAt (string)=${deliveryTime.toDate().toISOString()}, now=${now.toDate().toISOString()}, shouldDeliver=${shouldDeliver}`);
+            } else {
+              console.log(`[processScheduledDeliveries] Submission ${submissionId}: deliveredAt exists but is not a Timestamp or string, type=${typeof submission.deliveredAt}, value=${JSON.stringify(submission.deliveredAt)}`);
+            }
+          } else {
+            console.log(`[processScheduledDeliveries] Submission ${submissionId}: No deliveredAt field found, will use campaign settings`);
           }
-          // Otherwise, calculate delivery time based on campaign type (backward compatibility)
-          else if (campaign.deliveryType === "datetime" && campaign.deliveryDateTime) {
+          
+          // PRIORITY 2: If deliveredAt is not set, calculate delivery time based on campaign type (backward compatibility)
+          if (!deliveryTime && campaign.deliveryType === "datetime" && campaign.deliveryDateTime) {
             // Parse deliveryDateTime - handle both ISO strings and Firestore Timestamps
             let deliveryDate: Date;
             if (campaign.deliveryDateTime instanceof admin.firestore.Timestamp) {

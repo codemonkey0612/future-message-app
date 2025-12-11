@@ -121,36 +121,57 @@ export const addSubmission = async (submissionData: Omit<Submission, 'id'>): Pro
     // Sanitize form data and remove undefined values before sending to Firestore
     const sanitizedFormData = submissionData.formData ? sanitizeFormData(submissionData.formData) : {};
     
-    // Build the data object, ensuring deliveredAt is always included
+    // Convert ISO strings to Firestore Timestamps for proper timezone handling
+    const submittedAtTimestamp = firebase.firestore.Timestamp.fromDate(new Date(submissionData.submittedAt));
+    
+    // Build the data object, ensuring deliveredAt is ALWAYS included
     const dataToSave: any = {
         campaignId: submissionData.campaignId,
-        submittedAt: submissionData.submittedAt,
+        submittedAt: submittedAtTimestamp, // Use Firestore Timestamp for proper timezone
         deliveryChoice: submissionData.deliveryChoice,
         formData: sanitizedFormData,
         surveyAnswers: submissionData.surveyAnswers || {},
         delivered: submissionData.delivered !== undefined ? submissionData.delivered : false,
     };
     
-    // Always include deliveredAt if it exists (it should always exist now)
-    if (submissionData.deliveredAt) {
-        dataToSave.deliveredAt = submissionData.deliveredAt;
+    // ALWAYS include deliveredAt - convert to Firestore Timestamp
+    // This ensures it's always saved, even if the value is empty
+    let deliveredAtTimestamp: firebase.firestore.Timestamp;
+    if (submissionData.deliveredAt && submissionData.deliveredAt.trim() !== '') {
+        deliveredAtTimestamp = firebase.firestore.Timestamp.fromDate(new Date(submissionData.deliveredAt));
+        console.log('[firestoreService] Using provided deliveredAt:', submissionData.deliveredAt, '-> Timestamp:', deliveredAtTimestamp.toDate().toISOString());
+    } else {
+        // If not provided, set to 1 day from now as default
+        const defaultDate = new Date();
+        defaultDate.setDate(defaultDate.getDate() + 1);
+        deliveredAtTimestamp = firebase.firestore.Timestamp.fromDate(defaultDate);
+        console.log('[firestoreService] Using default deliveredAt (1 day from now):', deliveredAtTimestamp.toDate().toISOString());
     }
+    dataToSave.deliveredAt = deliveredAtTimestamp; // ALWAYS set this field
     
     // Include optional fields
     if (submissionData.lineUserId) {
         dataToSave.lineUserId = submissionData.lineUserId;
     }
     
-    console.log('[firestoreService] Adding submission with data:', JSON.stringify(dataToSave, null, 2));
-    console.log('[firestoreService] deliveredAt value:', dataToSave.deliveredAt);
+    console.log('[firestoreService] Adding submission with data:', {
+        campaignId: dataToSave.campaignId,
+        delivered: dataToSave.delivered,
+        deliveredAt: dataToSave.deliveredAt?.toDate?.()?.toISOString() || 'MISSING',
+        submittedAt: dataToSave.submittedAt?.toDate?.()?.toISOString() || 'MISSING',
+    });
     
     const docRef = await submissionCollection.add(dataToSave);
     console.log('[firestoreService] Submission created with ID:', docRef.id);
     
-    // Verify the data was saved correctly
+    // Verify the data was saved correctly - read it back immediately
     const savedDoc = await docRef.get();
     const savedData = savedDoc.data();
-    console.log('[firestoreService] Verified saved data - deliveredAt:', savedData?.deliveredAt);
+    console.log('[firestoreService] Verified saved data:', {
+        delivered: savedData?.delivered,
+        deliveredAt: savedData?.deliveredAt ? (savedData.deliveredAt.toDate ? savedData.deliveredAt.toDate().toISOString() : savedData.deliveredAt) : 'MISSING',
+        submittedAt: savedData?.submittedAt ? (savedData.submittedAt.toDate ? savedData.submittedAt.toDate().toISOString() : savedData.submittedAt) : 'MISSING',
+    });
     
     return docRef.id;
 };

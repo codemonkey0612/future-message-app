@@ -136,29 +136,45 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
         const sanitizedFormData = sanitizeFormData(formData);
         
         // Calculate delivery time based on campaign type
+        // Use Asia/Tokyo timezone for all date calculations
         let scheduledDeliveryTime: string;
         const submittedAt = new Date();
         
+        // Helper to format date in Asia/Tokyo timezone as ISO string
+        const toTokyoISOString = (date: Date): string => {
+            // Convert to Asia/Tokyo timezone (UTC+9)
+            const tokyoOffset = 9 * 60; // minutes
+            const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
+            const tokyoTime = new Date(utc + (tokyoOffset * 60000));
+            return tokyoTime.toISOString();
+        };
+        
         if (campaign.deliveryType === 'datetime' && campaign.deliveryDateTime) {
-            // Use the campaign's deliveryDateTime
-            scheduledDeliveryTime = new Date(campaign.deliveryDateTime).toISOString();
+            // Use the campaign's deliveryDateTime (assume it's in Asia/Tokyo timezone)
+            const deliveryDate = new Date(campaign.deliveryDateTime);
+            scheduledDeliveryTime = toTokyoISOString(deliveryDate);
         } else if (campaign.deliveryType === 'interval' && campaign.deliveryIntervalDays) {
             // Calculate: submittedAt + interval days
             const deliveryDate = new Date(submittedAt);
             deliveryDate.setDate(deliveryDate.getDate() + Number(campaign.deliveryIntervalDays));
-            scheduledDeliveryTime = deliveryDate.toISOString();
+            scheduledDeliveryTime = toTokyoISOString(deliveryDate);
         } else {
             // Default: schedule for 1 day from now if no delivery type is set
             const deliveryDate = new Date(submittedAt);
             deliveryDate.setDate(deliveryDate.getDate() + 1);
-            scheduledDeliveryTime = deliveryDate.toISOString();
+            scheduledDeliveryTime = toTokyoISOString(deliveryDate);
         }
         
-        console.log('[MessageForm] Creating submission with deliveredAt:', scheduledDeliveryTime);
+        // Format submittedAt in Asia/Tokyo timezone
+        const submittedAtISO = toTokyoISOString(submittedAt);
+        
+        console.log('[MessageForm] Creating submission:');
+        console.log('[MessageForm] - submittedAt (Tokyo):', submittedAtISO);
+        console.log('[MessageForm] - deliveredAt (Tokyo):', scheduledDeliveryTime);
         
         const newSubmission: Omit<Submission, 'id'> = {
         campaignId: campaign.id,
-        submittedAt: submittedAt.toISOString(),
+        submittedAt: submittedAtISO, // Use Asia/Tokyo timezone
         deliveryChoice: 'email',
         formData: sanitizedFormData,
         surveyAnswers,

@@ -119,6 +119,8 @@ export interface Submission {
   submittedAt: string;
   deliveryChoice: 'email' | 'line';
   lineUserId?: string;
+  delivered?: boolean;
+  deliveredAt?: string;
   formData: {
     message?: string;
     imageUrl?: string;

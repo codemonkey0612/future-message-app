@@ -140,6 +140,7 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
         deliveryChoice: 'email',
         formData: sanitizedFormData,
         surveyAnswers,
+        delivered: false, // Initialize as not delivered
         };
         await addSubmission(newSubmission);
         

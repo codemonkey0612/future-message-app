@@ -122,31 +122,47 @@ const LineCallback: React.FC = () => {
     try {
         // Calculate delivery time based on campaign type
         let scheduledDeliveryTime: string;
-        const submittedAt = new Date(pendingSubmissionData.submittedAt || new Date().toISOString());
+        const submittedAtDate = new Date(pendingSubmissionData.submittedAt || new Date().toISOString());
         
         if (campaign?.deliveryType === 'datetime' && campaign.deliveryDateTime) {
             // Use the campaign's deliveryDateTime
-            scheduledDeliveryTime = new Date(campaign.deliveryDateTime).toISOString();
+            // If format is "YYYY-MM-DDTHH:mm" without timezone, assume Asia/Tokyo (UTC+9)
+            let deliveryDate: Date;
+            const dateStr = campaign.deliveryDateTime;
+            if (typeof dateStr === 'string' && dateStr.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)) {
+                // Format: "2025-12-11T14:00" - assume Asia/Tokyo timezone
+                deliveryDate = new Date(dateStr + "+09:00");
+            } else {
+                deliveryDate = new Date(campaign.deliveryDateTime);
+            }
+            scheduledDeliveryTime = deliveryDate.toISOString();
         } else if (campaign?.deliveryType === 'interval' && campaign.deliveryIntervalDays) {
             // Calculate: submittedAt + interval days
-            const deliveryDate = new Date(submittedAt);
+            const deliveryDate = new Date(submittedAtDate);
             deliveryDate.setDate(deliveryDate.getDate() + Number(campaign.deliveryIntervalDays));
             scheduledDeliveryTime = deliveryDate.toISOString();
         } else {
             // Default: schedule for 1 day from now if no delivery type is set
-            const deliveryDate = new Date(submittedAt);
+            const deliveryDate = new Date(submittedAtDate);
             deliveryDate.setDate(deliveryDate.getDate() + 1);
             scheduledDeliveryTime = deliveryDate.toISOString();
         }
         
-        console.log('[LineCallback] Creating submission with deliveredAt:', scheduledDeliveryTime);
+        const submittedAtISO = submittedAtDate.toISOString();
+        
+        console.log('[LineCallback] Creating submission:');
+        console.log('[LineCallback] - submittedAt:', submittedAtISO);
+        console.log('[LineCallback] - deliveredAt:', scheduledDeliveryTime);
         
         const finalSubmission: Omit<Submission, 'id'> = { 
           ...pendingSubmissionData, 
+          submittedAt: submittedAtISO,
           surveyAnswers,
           delivered: false, // Initialize as not delivered
           deliveredAt: scheduledDeliveryTime, // Set the scheduled delivery time - ALWAYS set this field
         };
+        
+        console.log('[LineCallback] Full submission object:', JSON.stringify(finalSubmission, null, 2));
         
         console.log('[LineCallback] Submission data before sending:', JSON.stringify(finalSubmission, null, 2));
         await addSubmission(finalSubmission);

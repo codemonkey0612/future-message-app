@@ -120,10 +120,25 @@ const LineCallback: React.FC = () => {
     }
     
     try {
+        // Calculate delivery time based on campaign type
+        let scheduledDeliveryTime: string | null = null;
+        const submittedAt = new Date(pendingSubmissionData.submittedAt || new Date().toISOString());
+        
+        if (campaign?.deliveryType === 'datetime' && campaign.deliveryDateTime) {
+            // Use the campaign's deliveryDateTime
+            scheduledDeliveryTime = new Date(campaign.deliveryDateTime).toISOString();
+        } else if (campaign?.deliveryType === 'interval' && campaign.deliveryIntervalDays) {
+            // Calculate: submittedAt + interval days
+            const deliveryDate = new Date(submittedAt);
+            deliveryDate.setDate(deliveryDate.getDate() + Number(campaign.deliveryIntervalDays));
+            scheduledDeliveryTime = deliveryDate.toISOString();
+        }
+        
         const finalSubmission: Omit<Submission, 'id'> = { 
           ...pendingSubmissionData, 
           surveyAnswers,
           delivered: false, // Initialize as not delivered
+          deliveredAt: scheduledDeliveryTime || undefined, // Set the scheduled delivery time (will be updated to actual time when sent)
         };
         await addSubmission(finalSubmission);
         if (campaign) {

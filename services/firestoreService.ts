@@ -19,9 +19,14 @@ const fromFirestore = <T extends {id: string}>(doc: firebase.firestore.DocumentS
     } as T;
 };
 
-// Helper to sanitize data (remove undefined values)
+// Helper to sanitize data (remove undefined values, but keep null and empty strings)
 const sanitizeData = (data: any): any => {
-    return JSON.parse(JSON.stringify(data));
+    const cleaned = JSON.parse(JSON.stringify(data));
+    // Ensure deliveredAt is preserved even if it was null/undefined
+    if (data.deliveredAt !== undefined) {
+        cleaned.deliveredAt = data.deliveredAt;
+    }
+    return cleaned;
 };
 
 // File Upload
@@ -115,11 +120,38 @@ export const addSubmission = async (submissionData: Omit<Submission, 'id'>): Pro
     // FIX: addDoc() is collection.add() in v8.
     // Sanitize form data and remove undefined values before sending to Firestore
     const sanitizedFormData = submissionData.formData ? sanitizeFormData(submissionData.formData) : {};
-    const cleanData = sanitizeData({
-        ...submissionData,
-        formData: sanitizedFormData
-    });
-    const docRef = await submissionCollection.add(cleanData);
+    
+    // Build the data object, ensuring deliveredAt is always included
+    const dataToSave: any = {
+        campaignId: submissionData.campaignId,
+        submittedAt: submissionData.submittedAt,
+        deliveryChoice: submissionData.deliveryChoice,
+        formData: sanitizedFormData,
+        surveyAnswers: submissionData.surveyAnswers || {},
+        delivered: submissionData.delivered !== undefined ? submissionData.delivered : false,
+    };
+    
+    // Always include deliveredAt if it exists (it should always exist now)
+    if (submissionData.deliveredAt) {
+        dataToSave.deliveredAt = submissionData.deliveredAt;
+    }
+    
+    // Include optional fields
+    if (submissionData.lineUserId) {
+        dataToSave.lineUserId = submissionData.lineUserId;
+    }
+    
+    console.log('[firestoreService] Adding submission with data:', JSON.stringify(dataToSave, null, 2));
+    console.log('[firestoreService] deliveredAt value:', dataToSave.deliveredAt);
+    
+    const docRef = await submissionCollection.add(dataToSave);
+    console.log('[firestoreService] Submission created with ID:', docRef.id);
+    
+    // Verify the data was saved correctly
+    const savedDoc = await docRef.get();
+    const savedData = savedDoc.data();
+    console.log('[firestoreService] Verified saved data - deliveredAt:', savedData?.deliveredAt);
+    
     return docRef.id;
 };
 

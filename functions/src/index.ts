@@ -22,8 +22,8 @@ const getEmailTransporter = () => {
     port: smtpPort,
     secure: smtpSecure, // true for 465, false for other ports
     auth: {
-      user: "mail@futuremessage-app.com",
-      pass: "mail-mht54354029",
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASSWORD,
     },
     // TLS options for port 587
     ...(smtpPort === 587 && {
@@ -209,13 +209,57 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
     to: recipientEmail,
     subject: emailSubject,
     html: htmlBody,
+    // Add headers to improve deliverability
+    headers: {
+      'X-Priority': '1',
+      'X-MSMail-Priority': 'High',
+      'Importance': 'high',
+    },
+    // Add text version for better deliverability
+    text: emailBody.replace(/<br>/g, '\n').replace(/<[^>]*>/g, ''),
   };
 
   // Create transporter on each call to use current environment variables
   const emailTransporter = getEmailTransporter();
-  await emailTransporter.sendMail(mailOptions);
+  
+  // Log email attempt for debugging
+  console.log(`Attempting to send email:`, {
+    from: fromEmail,
+    to: recipientEmail,
+    subject: emailSubject,
+    smtpHost: process.env.SMTP_HOST || "smtp.futuremessage-app.com",
+    smtpPort: process.env.SMTP_PORT || "587",
+  });
+  
+  try {
+    const info = await emailTransporter.sendMail(mailOptions);
+    console.log(`Email sent successfully:`, {
+      messageId: info.messageId,
+      response: info.response,
+      accepted: info.accepted,
+      rejected: info.rejected,
+    });
+    
+    // Verify email was actually accepted
+    if (info.rejected && info.rejected.length > 0) {
+      throw new Error(`Email was rejected by SMTP server: ${info.rejected.join(", ")}`);
+    }
+    
+    if (!info.messageId) {
+      throw new Error("Email send completed but no messageId returned - email may not have been sent");
+    }
+  } catch (error: any) {
+    console.error("Error sending email:", {
+      error: error.message,
+      code: error.code,
+      command: error.command,
+      response: error.response,
+      responseCode: error.responseCode,
+    });
+    throw error;
+  }
 
-  // Mark submission as delivered
+  // Mark submission as delivered only after successful send
   await submissionDoc.ref.update({
     delivered: true,
     deliveredAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -411,10 +455,30 @@ export const processScheduledDeliveries = functions.region('asia-northeast1').pu
 
           // Check delivery time based on delivery type
           if (campaign.deliveryType === "datetime" && campaign.deliveryDateTime) {
-            const deliveryTime = admin.firestore.Timestamp.fromDate(
-              new Date(campaign.deliveryDateTime)
-            );
+            // Parse deliveryDateTime - handle both ISO strings and Firestore Timestamps
+            let deliveryDate: Date;
+            if (campaign.deliveryDateTime instanceof admin.firestore.Timestamp) {
+              deliveryDate = campaign.deliveryDateTime.toDate();
+            } else if (typeof campaign.deliveryDateTime === "string") {
+              // If string doesn't have timezone, assume it's in Asia/Tokyo timezone
+              const dateStr = campaign.deliveryDateTime;
+              // If format is "YYYY-MM-DDTHH:mm" without timezone, add timezone
+              if (dateStr.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)) {
+                // Assume Asia/Tokyo timezone (UTC+9)
+                deliveryDate = new Date(dateStr + "+09:00");
+              } else {
+                deliveryDate = new Date(dateStr);
+              }
+            } else {
+              deliveryDate = new Date(campaign.deliveryDateTime);
+            }
+            const deliveryTime = admin.firestore.Timestamp.fromDate(deliveryDate);
             shouldDeliver = now >= deliveryTime;
+            
+            // Log for debugging
+            if (shouldDeliver) {
+              console.log(`Delivery time reached for submission ${submissionId}: ${deliveryTime.toDate().toISOString()}, now: ${now.toDate().toISOString()}`);
+            }
           } else if (
             campaign.deliveryType === "interval" &&
             campaign.deliveryIntervalDays
@@ -464,6 +528,9 @@ export const processScheduledDeliveries = functions.region('asia-northeast1').pu
 
       await Promise.all(deliveryPromises);
       console.log(`Processed ${deliveryPromises.length} scheduled deliveries`);
+      
+      // Log campaign and submission counts for debugging
+      console.log(`Checked ${campaignsSnapshot.docs.length} campaigns, found ${deliveryPromises.length} deliveries to process`);
     } catch (error) {
       console.error("Error processing scheduled deliveries:", error);
       throw error;

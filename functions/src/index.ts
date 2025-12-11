@@ -156,8 +156,9 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
   }
 
   // Check if delivery channel is email
+  // Allow if either campaign.deliveryChannel is "email" OR submission.deliveryChoice is "email"
   if (campaign.deliveryChannel !== "email" && submission.deliveryChoice !== "email") {
-    throw new Error("This submission is not configured for email delivery");
+    throw new Error(`This submission is not configured for email delivery. Campaign channel: ${campaign.deliveryChannel}, Submission choice: ${submission.deliveryChoice}`);
   }
 
   // Get email template from campaign
@@ -556,9 +557,9 @@ export const processScheduledDeliveries = functions.region('asia-northeast1').pu
           }
 
           if (shouldDeliver) {
-            console.log(`[processScheduledDeliveries] Scheduling delivery for submission ${submissionId}, channel: ${campaign.deliveryChannel}, email: ${submission.formData?.email}`);
-            // Deliver based on channel
-            if (campaign.deliveryChannel === "email") {
+            console.log(`[processScheduledDeliveries] Scheduling delivery for submission ${submissionId}, channel: ${campaign.deliveryChannel}, deliveryChoice: ${submission.deliveryChoice}, email: ${submission.formData?.email}`);
+            // Deliver based on channel - check both campaign.deliveryChannel and submission.deliveryChoice
+            if (campaign.deliveryChannel === "email" || submission.deliveryChoice === "email") {
               deliveryPromises.push(
                 sendEmailHelper(submissionId, campaignId).then(() => {
                   console.log(`[processScheduledDeliveries] Email delivered successfully for submission ${submissionId}`);
@@ -566,7 +567,7 @@ export const processScheduledDeliveries = functions.region('asia-northeast1').pu
                   console.error(`[processScheduledDeliveries] Failed to deliver email for submission ${submissionId}:`, error);
                 })
               );
-            } else if (campaign.deliveryChannel === "line") {
+            } else if (campaign.deliveryChannel === "line" || submission.deliveryChoice === "line") {
               deliveryPromises.push(
                 sendLineHelper(submissionId, campaignId).then(() => {
                   console.log(`[processScheduledDeliveries] LINE message delivered successfully for submission ${submissionId}`);

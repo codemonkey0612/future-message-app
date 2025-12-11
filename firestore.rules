@@ -36,12 +36,19 @@ service cloud.firestore {
       allow read: if isAdmin();
       
       // Anyone can create submissions (for public form submissions)
+      // Allow submittedAt as either string or timestamp, and allow delivered/deliveredAt fields
       allow create: if request.resource.data.keys().hasAll(['campaignId', 'submittedAt', 'deliveryChoice', 'formData', 'surveyAnswers']) &&
                        request.resource.data.campaignId is string &&
-                       request.resource.data.submittedAt is string &&
+                       (request.resource.data.submittedAt is string || request.resource.data.submittedAt is timestamp) &&
                        request.resource.data.deliveryChoice in ['email', 'line'] &&
                        request.resource.data.formData is map &&
-                       request.resource.data.surveyAnswers is map;
+                       request.resource.data.surveyAnswers is map &&
+                       // Allow optional delivered field (boolean)
+                       (!('delivered' in request.resource.data) || request.resource.data.delivered is bool) &&
+                       // Allow optional deliveredAt field (string or timestamp)
+                       (!('deliveredAt' in request.resource.data) || request.resource.data.deliveredAt is string || request.resource.data.deliveredAt is timestamp) &&
+                       // Allow optional lineUserId field (string)
+                       (!('lineUserId' in request.resource.data) || request.resource.data.lineUserId is string);
       
       // No updates or deletes by public
       allow update, delete: if false;

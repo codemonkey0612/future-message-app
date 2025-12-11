@@ -136,7 +136,7 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
         const sanitizedFormData = sanitizeFormData(formData);
         
         // Calculate delivery time based on campaign type
-        let scheduledDeliveryTime: string | null = null;
+        let scheduledDeliveryTime: string;
         const submittedAt = new Date();
         
         if (campaign.deliveryType === 'datetime' && campaign.deliveryDateTime) {
@@ -147,7 +147,14 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
             const deliveryDate = new Date(submittedAt);
             deliveryDate.setDate(deliveryDate.getDate() + Number(campaign.deliveryIntervalDays));
             scheduledDeliveryTime = deliveryDate.toISOString();
+        } else {
+            // Default: schedule for 1 day from now if no delivery type is set
+            const deliveryDate = new Date(submittedAt);
+            deliveryDate.setDate(deliveryDate.getDate() + 1);
+            scheduledDeliveryTime = deliveryDate.toISOString();
         }
+        
+        console.log('[MessageForm] Creating submission with deliveredAt:', scheduledDeliveryTime);
         
         const newSubmission: Omit<Submission, 'id'> = {
         campaignId: campaign.id,
@@ -156,9 +163,12 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
         formData: sanitizedFormData,
         surveyAnswers,
         delivered: false, // Initialize as not delivered
-        deliveredAt: scheduledDeliveryTime || undefined, // Set the scheduled delivery time (will be updated to actual time when sent)
+        deliveredAt: scheduledDeliveryTime, // Set the scheduled delivery time - ALWAYS set this field
         };
+        
+        console.log('[MessageForm] Submission data before sending:', JSON.stringify(newSubmission, null, 2));
         await addSubmission(newSubmission);
+        console.log('[MessageForm] Submission created successfully');
         
         // Mark as submitted in local storage to prevent multiple submissions
         localStorage.setItem(`fma_submitted_${campaign.id}`, 'true');

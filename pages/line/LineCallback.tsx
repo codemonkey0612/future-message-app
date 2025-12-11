@@ -121,7 +121,7 @@ const LineCallback: React.FC = () => {
     
     try {
         // Calculate delivery time based on campaign type
-        let scheduledDeliveryTime: string | null = null;
+        let scheduledDeliveryTime: string;
         const submittedAt = new Date(pendingSubmissionData.submittedAt || new Date().toISOString());
         
         if (campaign?.deliveryType === 'datetime' && campaign.deliveryDateTime) {
@@ -132,15 +132,25 @@ const LineCallback: React.FC = () => {
             const deliveryDate = new Date(submittedAt);
             deliveryDate.setDate(deliveryDate.getDate() + Number(campaign.deliveryIntervalDays));
             scheduledDeliveryTime = deliveryDate.toISOString();
+        } else {
+            // Default: schedule for 1 day from now if no delivery type is set
+            const deliveryDate = new Date(submittedAt);
+            deliveryDate.setDate(deliveryDate.getDate() + 1);
+            scheduledDeliveryTime = deliveryDate.toISOString();
         }
+        
+        console.log('[LineCallback] Creating submission with deliveredAt:', scheduledDeliveryTime);
         
         const finalSubmission: Omit<Submission, 'id'> = { 
           ...pendingSubmissionData, 
           surveyAnswers,
           delivered: false, // Initialize as not delivered
-          deliveredAt: scheduledDeliveryTime || undefined, // Set the scheduled delivery time (will be updated to actual time when sent)
+          deliveredAt: scheduledDeliveryTime, // Set the scheduled delivery time - ALWAYS set this field
         };
+        
+        console.log('[LineCallback] Submission data before sending:', JSON.stringify(finalSubmission, null, 2));
         await addSubmission(finalSubmission);
+        console.log('[LineCallback] Submission created successfully');
         if (campaign) {
           localStorage.setItem(`fma_submitted_${campaign.id}`, 'true');
         }

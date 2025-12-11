@@ -134,13 +134,29 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
     try {
         // Sanitize form data before submission
         const sanitizedFormData = sanitizeFormData(formData);
+        
+        // Calculate delivery time based on campaign type
+        let scheduledDeliveryTime: string | null = null;
+        const submittedAt = new Date();
+        
+        if (campaign.deliveryType === 'datetime' && campaign.deliveryDateTime) {
+            // Use the campaign's deliveryDateTime
+            scheduledDeliveryTime = new Date(campaign.deliveryDateTime).toISOString();
+        } else if (campaign.deliveryType === 'interval' && campaign.deliveryIntervalDays) {
+            // Calculate: submittedAt + interval days
+            const deliveryDate = new Date(submittedAt);
+            deliveryDate.setDate(deliveryDate.getDate() + Number(campaign.deliveryIntervalDays));
+            scheduledDeliveryTime = deliveryDate.toISOString();
+        }
+        
         const newSubmission: Omit<Submission, 'id'> = {
         campaignId: campaign.id,
-        submittedAt: new Date().toISOString(),
+        submittedAt: submittedAt.toISOString(),
         deliveryChoice: 'email',
         formData: sanitizedFormData,
         surveyAnswers,
         delivered: false, // Initialize as not delivered
+        deliveredAt: scheduledDeliveryTime || undefined, // Set the scheduled delivery time (will be updated to actual time when sent)
         };
         await addSubmission(newSubmission);
         

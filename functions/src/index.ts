@@ -260,10 +260,16 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
   }
 
   // Mark submission as delivered only after successful send
-  await submissionDoc.ref.update({
+  // Note: deliveredAt was set to the scheduled delivery time when submission was created
+  // We keep it as the scheduled time, only update delivered to true
+  const updateData: any = {
     delivered: true,
-    deliveredAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
+    // deliveredAt stays as the scheduled time (set when submission was created)
+  };
+  
+  console.log(`[sendEmailHelper] Updating submission ${submissionId} with delivered=true`);
+  await submissionDoc.ref.update(updateData);
+  console.log(`[sendEmailHelper] Successfully updated submission ${submissionId}`);
 }
 
 /**
@@ -383,9 +389,11 @@ async function sendLineHelper(submissionId: string, campaignId: string): Promise
   }
 
   // Mark submission as delivered
+  // Note: deliveredAt was set to the scheduled delivery time when submission was created
+  // We keep it as the scheduled time, only update delivered to true
   await submissionDoc.ref.update({
     delivered: true,
-    deliveredAt: admin.firestore.FieldValue.serverTimestamp(),
+    // deliveredAt stays as the scheduled time (set when submission was created)
   });
 }
 
@@ -425,6 +433,7 @@ export const processScheduledDeliveries = functions.region('asia-northeast1').pu
   .onRun(async (context) => {
     try {
       const now = admin.firestore.Timestamp.now();
+      console.log(`[processScheduledDeliveries] Started at ${now.toDate().toISOString()}`);
       
       // Get all campaigns with pending deliveries
       const campaignsSnapshot = await admin
@@ -433,11 +442,15 @@ export const processScheduledDeliveries = functions.region('asia-northeast1').pu
         .where("deliveryType", "in", ["datetime", "interval"])
         .get();
 
+      console.log(`[processScheduledDeliveries] Found ${campaignsSnapshot.docs.length} campaigns with scheduled delivery`);
+
       const deliveryPromises: Promise<void>[] = [];
 
       for (const campaignDoc of campaignsSnapshot.docs) {
         const campaign = campaignDoc.data();
         const campaignId = campaignDoc.id;
+
+        console.log(`[processScheduledDeliveries] Processing campaign ${campaignId}, deliveryType: ${campaign.deliveryType}, deliveryChannel: ${campaign.deliveryChannel}`);
 
         // Get all undelivered submissions for this campaign
         // Query for submissions where delivered is false OR doesn't exist
@@ -453,14 +466,37 @@ export const processScheduledDeliveries = functions.region('asia-northeast1').pu
           return data.delivered !== true; // Include if delivered is false, undefined, or null
         });
 
+        console.log(`[processScheduledDeliveries] Campaign ${campaignId}: ${undeliveredSubmissions.length} undelivered submissions out of ${allSubmissionsSnapshot.docs.length} total`);
+
+        // Log all submissions for debugging
+        for (const subDoc of allSubmissionsSnapshot.docs) {
+          const subData = subDoc.data();
+          console.log(`[processScheduledDeliveries] Submission ${subDoc.id}: email=${subData.formData?.email}, delivered=${subData.delivered}, deliveryChoice=${subData.deliveryChoice}`);
+        }
+
         for (const submissionDoc of undeliveredSubmissions) {
           const submission = submissionDoc.data();
           const submissionId = submissionDoc.id;
 
-          let shouldDeliver = false;
+          console.log(`[processScheduledDeliveries] Checking submission ${submissionId}: email=${submission.formData?.email}, deliveryChoice=${submission.deliveryChoice}, campaign.deliveryChannel=${campaign.deliveryChannel}`);
 
-          // Check delivery time based on delivery type
-          if (campaign.deliveryType === "datetime" && campaign.deliveryDateTime) {
+          let shouldDeliver = false;
+          let deliveryTime: admin.firestore.Timestamp | null = null;
+
+          // First, check if submission has deliveredAt set (scheduled delivery time set when submission was created)
+          if (submission.deliveredAt && typeof submission.deliveredAt === 'string') {
+            const scheduledDate = new Date(submission.deliveredAt);
+            deliveryTime = admin.firestore.Timestamp.fromDate(scheduledDate);
+            shouldDeliver = now.toMillis() >= deliveryTime.toMillis();
+            console.log(`[processScheduledDeliveries] Submission ${submissionId}: Using deliveredAt (scheduled time)=${deliveryTime.toDate().toISOString()}, now=${now.toDate().toISOString()}, shouldDeliver=${shouldDeliver}`);
+          } else if (submission.deliveredAt && submission.deliveredAt instanceof admin.firestore.Timestamp) {
+            // If deliveredAt is already a Timestamp (from Firestore), use it directly
+            deliveryTime = submission.deliveredAt;
+            shouldDeliver = now.toMillis() >= deliveryTime.toMillis();
+            console.log(`[processScheduledDeliveries] Submission ${submissionId}: Using deliveredAt (scheduled time, Timestamp)=${deliveryTime.toDate().toISOString()}, now=${now.toDate().toISOString()}, shouldDeliver=${shouldDeliver}`);
+          }
+          // Otherwise, calculate delivery time based on campaign type (backward compatibility)
+          else if (campaign.deliveryType === "datetime" && campaign.deliveryDateTime) {
             // Parse deliveryDateTime - handle both ISO strings and Firestore Timestamps
             let deliveryDate: Date;
             if (campaign.deliveryDateTime instanceof admin.firestore.Timestamp) {
@@ -478,13 +514,10 @@ export const processScheduledDeliveries = functions.region('asia-northeast1').pu
             } else {
               deliveryDate = new Date(campaign.deliveryDateTime);
             }
-            const deliveryTime = admin.firestore.Timestamp.fromDate(deliveryDate);
-            shouldDeliver = now >= deliveryTime;
+            deliveryTime = admin.firestore.Timestamp.fromDate(deliveryDate);
+            shouldDeliver = now.toMillis() >= deliveryTime.toMillis();
             
-            // Log for debugging
-            if (shouldDeliver) {
-              console.log(`Delivery time reached for submission ${submissionId}: ${deliveryTime.toDate().toISOString()}, now: ${now.toDate().toISOString()}`);
-            }
+            console.log(`[processScheduledDeliveries] Submission ${submissionId}: deliveryTime=${deliveryTime.toDate().toISOString()}, now=${now.toDate().toISOString()}, shouldDeliver=${shouldDeliver}`);
           } else if (
             campaign.deliveryType === "interval" &&
             campaign.deliveryIntervalDays
@@ -502,44 +535,206 @@ export const processScheduledDeliveries = functions.region('asia-northeast1').pu
               submissionTime = now;
             }
             
-            const deliveryTime = admin.firestore.Timestamp.fromMillis(
+            deliveryTime = admin.firestore.Timestamp.fromMillis(
               submissionTime.toMillis() +
                 campaign.deliveryIntervalDays * 24 * 60 * 60 * 1000
             );
-            shouldDeliver = now >= deliveryTime;
+            shouldDeliver = now.toMillis() >= deliveryTime.toMillis();
+            
+            console.log(`[processScheduledDeliveries] Submission ${submissionId}: submittedAt=${submissionTime.toDate().toISOString()}, deliveryTime=${deliveryTime.toDate().toISOString()}, now=${now.toDate().toISOString()}, shouldDeliver=${shouldDeliver}`);
           }
 
           if (shouldDeliver) {
+            console.log(`[processScheduledDeliveries] Scheduling delivery for submission ${submissionId}, channel: ${campaign.deliveryChannel}, email: ${submission.formData?.email}`);
             // Deliver based on channel
             if (campaign.deliveryChannel === "email") {
               deliveryPromises.push(
                 sendEmailHelper(submissionId, campaignId).then(() => {
-                  console.log(`Email delivered for submission ${submissionId}`);
+                  console.log(`[processScheduledDeliveries] Email delivered successfully for submission ${submissionId}`);
                 }).catch((error) => {
-                  console.error(`Failed to deliver email for submission ${submissionId}:`, error);
+                  console.error(`[processScheduledDeliveries] Failed to deliver email for submission ${submissionId}:`, error);
                 })
               );
             } else if (campaign.deliveryChannel === "line") {
               deliveryPromises.push(
                 sendLineHelper(submissionId, campaignId).then(() => {
-                  console.log(`LINE message delivered for submission ${submissionId}`);
+                  console.log(`[processScheduledDeliveries] LINE message delivered successfully for submission ${submissionId}`);
                 }).catch((error) => {
-                  console.error(`Failed to deliver LINE message for submission ${submissionId}:`, error);
+                  console.error(`[processScheduledDeliveries] Failed to deliver LINE message for submission ${submissionId}:`, error);
                 })
               );
+            } else {
+              console.warn(`[processScheduledDeliveries] Unknown delivery channel for submission ${submissionId}: ${campaign.deliveryChannel}`);
             }
           }
         }
       }
 
+      console.log(`[processScheduledDeliveries] Waiting for ${deliveryPromises.length} delivery promises to complete`);
       await Promise.all(deliveryPromises);
-      console.log(`Processed ${deliveryPromises.length} scheduled deliveries`);
+      console.log(`[processScheduledDeliveries] Completed processing ${deliveryPromises.length} scheduled deliveries`);
       
       // Log campaign and submission counts for debugging
-      console.log(`Checked ${campaignsSnapshot.docs.length} campaigns, found ${deliveryPromises.length} deliveries to process`);
+      console.log(`[processScheduledDeliveries] Summary: Checked ${campaignsSnapshot.docs.length} campaigns, processed ${deliveryPromises.length} deliveries`);
     } catch (error) {
-      console.error("Error processing scheduled deliveries:", error);
+      console.error("[processScheduledDeliveries] Error processing scheduled deliveries:", error);
       throw error;
     }
   });
+
+/**
+ * Manual trigger function for testing scheduled deliveries
+ * Can be called via HTTP to test the delivery process immediately
+ */
+export const triggerScheduledDeliveries = functions.region('asia-northeast1').https.onRequest(async (req, res) => {
+  try {
+    console.log('[triggerScheduledDeliveries] Manual trigger called');
+    
+    // Call the same logic as the scheduled function
+    const now = admin.firestore.Timestamp.now();
+    console.log(`[triggerScheduledDeliveries] Started at ${now.toDate().toISOString()}`);
+    
+    // Get all campaigns with pending deliveries
+    const campaignsSnapshot = await admin
+      .firestore()
+      .collection("campaigns")
+      .where("deliveryType", "in", ["datetime", "interval"])
+      .get();
+
+    console.log(`[triggerScheduledDeliveries] Found ${campaignsSnapshot.docs.length} campaigns with scheduled delivery`);
+
+    const deliveryPromises: Promise<void>[] = [];
+
+    for (const campaignDoc of campaignsSnapshot.docs) {
+      const campaign = campaignDoc.data();
+      const campaignId = campaignDoc.id;
+
+      console.log(`[triggerScheduledDeliveries] Processing campaign ${campaignId}, deliveryType: ${campaign.deliveryType}, deliveryChannel: ${campaign.deliveryChannel}`);
+
+      // Get all undelivered submissions for this campaign
+      const allSubmissionsSnapshot = await admin
+        .firestore()
+        .collection("submissions")
+        .where("campaignId", "==", campaignId)
+        .get();
+      
+      // Filter to only get undelivered submissions
+      const undeliveredSubmissions = allSubmissionsSnapshot.docs.filter(doc => {
+        const data = doc.data();
+        return data.delivered !== true;
+      });
+
+      console.log(`[triggerScheduledDeliveries] Campaign ${campaignId}: ${undeliveredSubmissions.length} undelivered submissions out of ${allSubmissionsSnapshot.docs.length} total`);
+
+      // Log all submissions for debugging
+      for (const subDoc of allSubmissionsSnapshot.docs) {
+        const subData = subDoc.data();
+        console.log(`[triggerScheduledDeliveries] Submission ${subDoc.id}: email=${subData.formData?.email}, delivered=${subData.delivered}, deliveryChoice=${subData.deliveryChoice}`);
+      }
+
+      for (const submissionDoc of undeliveredSubmissions) {
+        const submission = submissionDoc.data();
+        const submissionId = submissionDoc.id;
+
+        console.log(`[triggerScheduledDeliveries] Checking submission ${submissionId}: email=${submission.formData?.email}, deliveryChoice=${submission.deliveryChoice}, campaign.deliveryChannel=${campaign.deliveryChannel}`);
+
+        let shouldDeliver = false;
+        let deliveryTime: admin.firestore.Timestamp | null = null;
+
+        // First, check if submission has deliveredAt set (scheduled delivery time set when submission was created)
+        if (submission.deliveredAt && typeof submission.deliveredAt === 'string') {
+          const scheduledDate = new Date(submission.deliveredAt);
+          deliveryTime = admin.firestore.Timestamp.fromDate(scheduledDate);
+          shouldDeliver = now.toMillis() >= deliveryTime.toMillis();
+          console.log(`[triggerScheduledDeliveries] Submission ${submissionId}: Using deliveredAt (scheduled time)=${deliveryTime.toDate().toISOString()}, now=${now.toDate().toISOString()}, shouldDeliver=${shouldDeliver}`);
+        } else if (submission.deliveredAt && submission.deliveredAt instanceof admin.firestore.Timestamp) {
+          // If deliveredAt is already a Timestamp (from Firestore), use it directly
+          deliveryTime = submission.deliveredAt;
+          shouldDeliver = now.toMillis() >= deliveryTime.toMillis();
+          console.log(`[triggerScheduledDeliveries] Submission ${submissionId}: Using deliveredAt (scheduled time, Timestamp)=${deliveryTime.toDate().toISOString()}, now=${now.toDate().toISOString()}, shouldDeliver=${shouldDeliver}`);
+        }
+        // Otherwise, calculate delivery time based on campaign type (backward compatibility)
+        else if (campaign.deliveryType === "datetime" && campaign.deliveryDateTime) {
+          let deliveryDate: Date;
+          if (campaign.deliveryDateTime instanceof admin.firestore.Timestamp) {
+            deliveryDate = campaign.deliveryDateTime.toDate();
+          } else if (typeof campaign.deliveryDateTime === "string") {
+            const dateStr = campaign.deliveryDateTime;
+            if (dateStr.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)) {
+              deliveryDate = new Date(dateStr + "+09:00");
+            } else {
+              deliveryDate = new Date(dateStr);
+            }
+          } else {
+            deliveryDate = new Date(campaign.deliveryDateTime);
+          }
+          deliveryTime = admin.firestore.Timestamp.fromDate(deliveryDate);
+          shouldDeliver = now.toMillis() >= deliveryTime.toMillis();
+          
+          console.log(`[triggerScheduledDeliveries] Submission ${submissionId}: deliveryTime=${deliveryTime.toDate().toISOString()}, now=${now.toDate().toISOString()}, shouldDeliver=${shouldDeliver}`);
+        } else if (
+          campaign.deliveryType === "interval" &&
+          campaign.deliveryIntervalDays
+        ) {
+          let submissionTime: admin.firestore.Timestamp;
+          if (submission.submittedAt instanceof admin.firestore.Timestamp) {
+            submissionTime = submission.submittedAt;
+          } else if (typeof submission.submittedAt === "string") {
+            submissionTime = admin.firestore.Timestamp.fromDate(
+              new Date(submission.submittedAt)
+            );
+          } else {
+            submissionTime = now;
+          }
+          
+          deliveryTime = admin.firestore.Timestamp.fromMillis(
+            submissionTime.toMillis() +
+              campaign.deliveryIntervalDays * 24 * 60 * 60 * 1000
+          );
+          shouldDeliver = now.toMillis() >= deliveryTime.toMillis();
+          
+          console.log(`[triggerScheduledDeliveries] Submission ${submissionId}: submittedAt=${submissionTime.toDate().toISOString()}, deliveryTime=${deliveryTime.toDate().toISOString()}, now=${now.toDate().toISOString()}, shouldDeliver=${shouldDeliver}`);
+        }
+
+        if (shouldDeliver) {
+          console.log(`[triggerScheduledDeliveries] Scheduling delivery for submission ${submissionId}, channel: ${campaign.deliveryChannel}, email: ${submission.formData?.email}`);
+          if (campaign.deliveryChannel === "email") {
+            deliveryPromises.push(
+              sendEmailHelper(submissionId, campaignId).then(() => {
+                console.log(`[triggerScheduledDeliveries] Email delivered successfully for submission ${submissionId}`);
+              }).catch((error) => {
+                console.error(`[triggerScheduledDeliveries] Failed to deliver email for submission ${submissionId}:`, error);
+              })
+            );
+          } else if (campaign.deliveryChannel === "line") {
+            deliveryPromises.push(
+              sendLineHelper(submissionId, campaignId).then(() => {
+                console.log(`[triggerScheduledDeliveries] LINE message delivered successfully for submission ${submissionId}`);
+              }).catch((error) => {
+                console.error(`[triggerScheduledDeliveries] Failed to deliver LINE message for submission ${submissionId}:`, error);
+              })
+            );
+          }
+        }
+      }
+    }
+
+    console.log(`[triggerScheduledDeliveries] Waiting for ${deliveryPromises.length} delivery promises to complete`);
+    await Promise.all(deliveryPromises);
+    console.log(`[triggerScheduledDeliveries] Completed processing ${deliveryPromises.length} scheduled deliveries`);
+    
+    res.status(200).json({
+      success: true,
+      message: `Processed ${deliveryPromises.length} deliveries`,
+      checkedCampaigns: campaignsSnapshot.docs.length,
+      processedDeliveries: deliveryPromises.length
+    });
+  } catch (error: any) {
+    console.error("[triggerScheduledDeliveries] Error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
 

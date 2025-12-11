@@ -120,7 +120,7 @@ export interface Submission {
   deliveryChoice: 'email' | 'line';
   lineUserId?: string;
   delivered?: boolean;
-  deliveredAt?: string;
+  deliveredAt?: string; // Scheduled delivery time (set when submission is created, shows when email should be sent)
   formData: {
     message?: string;
     imageUrl?: string;

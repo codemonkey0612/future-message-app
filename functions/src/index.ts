@@ -170,6 +170,13 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
   // Prepare email content
   const emailSubject = emailTemplate.subject || "未来へのメッセージ";
   let emailBody = emailTemplate.body || "";
+  
+  // If email body is empty, use the message from form data
+  if (!emailBody || emailBody.trim() === "") {
+    emailBody = submission.formData?.message || "未来へのメッセージ";
+  }
+  
+  console.log(`[sendEmailHelper] Email body before replacement:`, emailBody.substring(0, 100));
 
   // Replace placeholders in email body
   // Handle submittedAt - could be ISO string or Firestore Timestamp
@@ -182,10 +189,15 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
     submittedAtDate = new Date();
   }
   
+  // Replace placeholders in email body
   emailBody = emailBody
     .replace(/\{message\}/g, submission.formData?.message || "")
     .replace(/\{email\}/g, submission.formData?.email || "")
     .replace(/\{submittedAt\}/g, submittedAtDate.toLocaleString("ja-JP"));
+  
+  console.log(`[sendEmailHelper] Email body after replacement:`, emailBody.substring(0, 200));
+  console.log(`[sendEmailHelper] Message from formData:`, submission.formData?.message?.substring(0, 100));
+  console.log(`[sendEmailHelper] Image URL present:`, !!submission.formData?.imageUrl);
 
   // Validate recipient email
   const recipientEmail = submission.formData?.email;
@@ -202,11 +214,47 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
   // Convert newlines to <br> and wrap in proper HTML structure
   let htmlBody = emailBody.replace(/\n/g, "<br>");
   
-  // Add image if available - embed with proper HTML structure
+  // Handle image - convert data URL to attachment if needed
+  const attachments: any[] = [];
+  let imageCid: string | null = null;
+  
   if (submission.formData?.imageUrl) {
-    // Validate image URL and embed with proper styling
     const imageUrl = submission.formData.imageUrl;
-    htmlBody += `<br><br><div style="text-align: center; margin: 20px 0;"><img src="${imageUrl}" alt="Message image" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"></div>`;
+    
+    // Check if it's a data URL (base64)
+    if (imageUrl.startsWith('data:image/')) {
+      // Extract MIME type and base64 data
+      const matches = imageUrl.match(/^data:image\/(\w+);base64,(.+)$/);
+      if (matches) {
+        const mimeType = matches[1];
+        const base64Data = matches[2];
+        const buffer = Buffer.from(base64Data, 'base64');
+        
+        // Generate a unique CID for the image
+        imageCid = `message-image-${submissionId}`;
+        
+        // Add as attachment with CID
+        attachments.push({
+          filename: `message-image.${mimeType}`,
+          content: buffer,
+          cid: imageCid,
+          contentType: `image/${mimeType}`,
+        });
+        
+        // Reference in HTML using CID
+        htmlBody += `<br><br><div style="text-align: center; margin: 20px 0;"><img src="cid:${imageCid}" alt="Message image" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"></div>`;
+        
+        console.log(`[sendEmailHelper] Converting data URL to attachment with CID: ${imageCid}`);
+      } else {
+        // Fallback: try to use as URL
+        htmlBody += `<br><br><div style="text-align: center; margin: 20px 0;"><img src="${imageUrl}" alt="Message image" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"></div>`;
+        console.log(`[sendEmailHelper] Using image URL directly: ${imageUrl.substring(0, 50)}...`);
+      }
+    } else {
+      // Regular URL - use directly
+      htmlBody += `<br><br><div style="text-align: center; margin: 20px 0;"><img src="${imageUrl}" alt="Message image" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"></div>`;
+      console.log(`[sendEmailHelper] Using image URL: ${imageUrl}`);
+    }
   }
   
   // Wrap in proper HTML structure for better email client compatibility
@@ -225,10 +273,10 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
     </html>
   `;
   
-  // Prepare text version - include image URL if available
+  // Prepare text version - include image note if available
   let textBody = emailBody.replace(/<br>/g, '\n').replace(/<[^>]*>/g, '');
   if (submission.formData?.imageUrl) {
-    textBody += `\n\n[画像: ${submission.formData.imageUrl}]`;
+    textBody += `\n\n[画像が添付されています]`;
   }
   
   const mailOptions = {
@@ -236,14 +284,14 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
     to: recipientEmail,
     subject: emailSubject,
     html: fullHtmlBody,
+    text: textBody,
+    attachments: attachments.length > 0 ? attachments : undefined,
     // Add headers to improve deliverability
     headers: {
       'X-Priority': '1',
       'X-MSMail-Priority': 'High',
       'Importance': 'high',
     },
-    // Add text version for better deliverability
-    text: textBody,
   };
 
   // Create transporter on each call to use current environment variables

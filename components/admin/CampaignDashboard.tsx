@@ -15,11 +15,23 @@ const CampaignDashboard: React.FC<CampaignDashboardProps> = ({ campaign, partici
   const getDeliveryInfo = (submission: Submission) => {
     if (!campaign) return { date: null, status: 'unknown', label: '-' };
 
-    let deliveryDate: Date;
+    let deliveryDate: Date | null = null;
 
-    if (campaign.deliveryType === 'datetime' && campaign.deliveryDateTime) {
+    // PRIORITY 1: Use deliveredAt if available (preferred - shows scheduled delivery time)
+    if (submission.deliveredAt) {
+      if (typeof submission.deliveredAt === 'string') {
+        deliveryDate = new Date(submission.deliveredAt);
+      } else if (submission.deliveredAt && typeof submission.deliveredAt === 'object' && 'toDate' in submission.deliveredAt) {
+        // Firestore Timestamp
+        deliveryDate = (submission.deliveredAt as any).toDate();
+      }
+    }
+    
+    // PRIORITY 2: Calculate delivery date based on campaign type (fallback)
+    if (!deliveryDate) {
+      if (campaign.deliveryType === 'datetime' && campaign.deliveryDateTime) {
         deliveryDate = new Date(campaign.deliveryDateTime);
-    } else if (campaign.deliveryType === 'interval' && campaign.deliveryIntervalDays) {
+      } else if (campaign.deliveryType === 'interval' && campaign.deliveryIntervalDays) {
         // Handle submittedAt - could be string, Date, or Firestore Timestamp
         let submitted: Date;
         if (submission.submittedAt instanceof Date) {
@@ -34,18 +46,20 @@ const CampaignDashboard: React.FC<CampaignDashboardProps> = ({ campaign, partici
         }
         deliveryDate = new Date(submitted);
         deliveryDate.setDate(deliveryDate.getDate() + Number(campaign.deliveryIntervalDays));
-    } else {
+      } else {
         return { date: null, status: 'unknown', label: '-' };
+      }
     }
 
-    const now = new Date();
-    // 配信予定時刻を過ぎていれば「配信済み」とみなす
-    const isSent = now >= deliveryDate;
+    // IMPORTANT: Check the delivered field to determine status
+    // If delivered === true, status is "配達済み" (delivered)
+    // If delivered === false or undefined, status is "配信待ち" (pending)
+    const isDelivered = submission.delivered === true;
 
     return {
         date: deliveryDate,
-        status: isSent ? 'sent' : 'pending',
-        label: isSent ? '配信済み' : '配信待ち'
+        status: isDelivered ? 'sent' : 'pending',
+        label: isDelivered ? '配達済み' : '配信待ち'
     };
   };
 

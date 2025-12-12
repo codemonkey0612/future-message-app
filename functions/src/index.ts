@@ -198,18 +198,44 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
                    process.env.EMAIL_USER || 
                    "mail@futuremessage-app.com";
   
-  // Prepare HTML body with image if available
+  // Prepare HTML body with proper structure
+  // Convert newlines to <br> and wrap in proper HTML structure
   let htmlBody = emailBody.replace(/\n/g, "<br>");
+  
+  // Add image if available - embed with proper HTML structure
   if (submission.formData?.imageUrl) {
-    // Embed image in HTML instead of attachment (since imageUrl is a URL, not a local path)
-    htmlBody += `<br><br><img src="${submission.formData.imageUrl}" alt="Message image" style="max-width: 100%; height: auto;">`;
+    // Validate image URL and embed with proper styling
+    const imageUrl = submission.formData.imageUrl;
+    htmlBody += `<br><br><div style="text-align: center; margin: 20px 0;"><img src="${imageUrl}" alt="Message image" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"></div>`;
+  }
+  
+  // Wrap in proper HTML structure for better email client compatibility
+  const fullHtmlBody = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="background-color: #ffffff; padding: 20px; border-radius: 8px;">
+        ${htmlBody}
+      </div>
+    </body>
+    </html>
+  `;
+  
+  // Prepare text version - include image URL if available
+  let textBody = emailBody.replace(/<br>/g, '\n').replace(/<[^>]*>/g, '');
+  if (submission.formData?.imageUrl) {
+    textBody += `\n\n[画像: ${submission.formData.imageUrl}]`;
   }
   
   const mailOptions = {
     from: `"${campaign.name || 'Future Message App'}" <${fromEmail}>`,
     to: recipientEmail,
     subject: emailSubject,
-    html: htmlBody,
+    html: fullHtmlBody,
     // Add headers to improve deliverability
     headers: {
       'X-Priority': '1',
@@ -217,7 +243,7 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
       'Importance': 'high',
     },
     // Add text version for better deliverability
-    text: emailBody.replace(/<br>/g, '\n').replace(/<[^>]*>/g, ''),
+    text: textBody,
   };
 
   // Create transporter on each call to use current environment variables

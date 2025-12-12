@@ -20,7 +20,18 @@ const CampaignDashboard: React.FC<CampaignDashboardProps> = ({ campaign, partici
     if (campaign.deliveryType === 'datetime' && campaign.deliveryDateTime) {
         deliveryDate = new Date(campaign.deliveryDateTime);
     } else if (campaign.deliveryType === 'interval' && campaign.deliveryIntervalDays) {
-        const submitted = new Date(submission.submittedAt);
+        // Handle submittedAt - could be string, Date, or Firestore Timestamp
+        let submitted: Date;
+        if (submission.submittedAt instanceof Date) {
+          submitted = submission.submittedAt;
+        } else if (typeof submission.submittedAt === 'string') {
+          submitted = new Date(submission.submittedAt);
+        } else if (submission.submittedAt && typeof submission.submittedAt === 'object' && 'toDate' in submission.submittedAt) {
+          // Firestore Timestamp
+          submitted = (submission.submittedAt as any).toDate();
+        } else {
+          return { date: null, status: 'unknown', label: '-' };
+        }
         deliveryDate = new Date(submitted);
         deliveryDate.setDate(deliveryDate.getDate() + Number(campaign.deliveryIntervalDays));
     } else {
@@ -242,9 +253,24 @@ const CampaignDashboard: React.FC<CampaignDashboardProps> = ({ campaign, partici
             <tbody className="bg-white divide-y divide-gray-200">
                 {participants.length > 0 ? participants.map(p => {
                   const { date, status, label } = getDeliveryInfo(p);
+                  // Handle submittedAt - could be string, Date, or Firestore Timestamp
+                  let submittedAtDate: Date;
+                  if (p.submittedAt instanceof Date) {
+                    submittedAtDate = p.submittedAt;
+                  } else if (typeof p.submittedAt === 'string') {
+                    submittedAtDate = new Date(p.submittedAt);
+                  } else if (p.submittedAt && typeof p.submittedAt === 'object' && 'toDate' in p.submittedAt) {
+                    // Firestore Timestamp
+                    submittedAtDate = (p.submittedAt as any).toDate();
+                  } else {
+                    submittedAtDate = new Date();
+                  }
+                  
                   return (
                     <tr key={p.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(p.submittedAt).toLocaleString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {isNaN(submittedAtDate.getTime()) ? '-' : submittedAtDate.toLocaleString('ja-JP')}
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {date ? date.toLocaleString() : '-'}
                         </td>

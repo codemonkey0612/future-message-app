@@ -98,16 +98,33 @@ const ParticipantList: React.FC = () => {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {participants.length > 0 ? participants.map(p => (
+            {participants.length > 0 ? participants.map(p => {
+              // Handle submittedAt - could be string, Date, or Firestore Timestamp
+              let submittedAtDate: Date;
+              if (p.submittedAt instanceof Date) {
+                submittedAtDate = p.submittedAt;
+              } else if (typeof p.submittedAt === 'string') {
+                submittedAtDate = new Date(p.submittedAt);
+              } else if (p.submittedAt && typeof p.submittedAt === 'object' && 'toDate' in p.submittedAt) {
+                // Firestore Timestamp
+                submittedAtDate = (p.submittedAt as any).toDate();
+              } else {
+                submittedAtDate = new Date();
+              }
+              
+              return (
               <tr key={p.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(p.submittedAt).toLocaleString()}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {isNaN(submittedAtDate.getTime()) ? '-' : submittedAtDate.toLocaleString('ja-JP')}
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{p.formData.email}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-sm truncate">{p.formData.message}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <button className="text-primary hover:text-primary-hover" onClick={() => alert(JSON.stringify(p, null, 2))}>詳細表示</button>
                 </td>
               </tr>
-            )) : (
+              );
+            }) : (
                 <tr>
                     <td colSpan={4} className="text-center py-10 text-gray-500">まだ参加者はいません。</td>
                 </tr>

@@ -439,7 +439,7 @@ export const sendLineMessage = functions.region('asia-northeast1').https.onCall(
  * Runs daily to check for messages that need to be delivered
  */
 export const processScheduledDeliveries = functions.region('asia-northeast1').pubsub
-  .schedule("every 1 hours")
+  .schedule("every 10 minutes")
   .timeZone("Asia/Tokyo")
   .onRun(async (context) => {
     try {

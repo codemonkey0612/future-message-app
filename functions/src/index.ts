@@ -257,20 +257,24 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
   }
 
   // Mark submission as delivered only after successful send
-  // Update deliveredAt to the actual delivery time (when email was sent)
+  // IMPORTANT: Keep deliveredAt as the scheduled time (don't overwrite it)
+  // The scheduled function uses deliveredAt to determine when to send
+  // We only update delivered to true, and add actualDeliveredAt for tracking
   const actualDeliveryTime = admin.firestore.Timestamp.now();
   const updateData: any = {
     delivered: true,
-    deliveredAt: actualDeliveryTime, // Update to actual delivery time
+    actualDeliveredAt: actualDeliveryTime, // Track when email was actually sent
+    // deliveredAt remains as the scheduled time (DO NOT UPDATE)
   };
   
-  console.log(`[sendEmailHelper] Updating submission ${submissionId} with delivered=true, deliveredAt=${actualDeliveryTime.toDate().toISOString()}`);
+  console.log(`[sendEmailHelper] Updating submission ${submissionId} with delivered=true, actualDeliveredAt=${actualDeliveryTime.toDate().toISOString()}`);
+  console.log(`[sendEmailHelper] Keeping deliveredAt as scheduled time (not updating)`);
   await submissionDoc.ref.update(updateData);
   
   // Verify the update was successful
   const updatedDoc = await submissionDoc.ref.get();
   const updatedData = updatedDoc.data();
-  console.log(`[sendEmailHelper] After update - delivered: ${updatedData?.delivered}, deliveredAt: ${updatedData?.deliveredAt ? (updatedData.deliveredAt.toDate ? updatedData.deliveredAt.toDate().toISOString() : updatedData.deliveredAt) : 'MISSING'}`);
+  console.log(`[sendEmailHelper] After update - delivered: ${updatedData?.delivered}, deliveredAt (scheduled): ${updatedData?.deliveredAt ? (updatedData.deliveredAt.toDate ? updatedData.deliveredAt.toDate().toISOString() : updatedData.deliveredAt) : 'MISSING'}, actualDeliveredAt: ${updatedData?.actualDeliveredAt ? (updatedData.actualDeliveredAt.toDate ? updatedData.actualDeliveredAt.toDate().toISOString() : updatedData.actualDeliveredAt) : 'MISSING'}`);
   console.log(`[sendEmailHelper] Successfully updated submission ${submissionId}`);
 }
 
@@ -391,13 +395,17 @@ async function sendLineHelper(submissionId: string, campaignId: string): Promise
   }
 
   // Mark submission as delivered
-  // Update deliveredAt to the actual delivery time (when LINE message was sent)
+  // IMPORTANT: Keep deliveredAt as the scheduled time (don't overwrite it)
+  // The scheduled function uses deliveredAt to determine when to send
+  // We only update delivered to true, and add actualDeliveredAt for tracking
   const actualDeliveryTime = admin.firestore.Timestamp.now();
   await submissionDoc.ref.update({
     delivered: true,
-    deliveredAt: actualDeliveryTime, // Update to actual delivery time
+    actualDeliveredAt: actualDeliveryTime, // Track when LINE message was actually sent
+    // deliveredAt remains as the scheduled time (DO NOT UPDATE)
   });
-  console.log(`[sendLineHelper] Updated submission ${submissionId} with delivered=true, deliveredAt=${actualDeliveryTime.toDate().toISOString()}`);
+  console.log(`[sendLineHelper] Updated submission ${submissionId} with delivered=true, actualDeliveredAt=${actualDeliveryTime.toDate().toISOString()}`);
+  console.log(`[sendLineHelper] Keeping deliveredAt as scheduled time (not updating)`);
 }
 
 /**
@@ -489,19 +497,22 @@ export const processScheduledDeliveries = functions.region('asia-northeast1').pu
 
           // PRIORITY 1: Check if submission has deliveredAt set (scheduled delivery time set when submission was created)
           // This is the preferred method - always use deliveredAt if it exists
+          // IMPORTANT: deliveredAt is the SCHEDULED time, not the actual delivery time
           // Check Timestamp first (most common case now)
           if (submission.deliveredAt) {
             if (submission.deliveredAt instanceof admin.firestore.Timestamp) {
               // If deliveredAt is already a Timestamp (from Firestore), use it directly
               deliveryTime = submission.deliveredAt;
-              shouldDeliver = now.toMillis() >= deliveryTime.toMillis();
-              console.log(`[processScheduledDeliveries] Submission ${submissionId}: Using deliveredAt (Timestamp)=${deliveryTime.toDate().toISOString()}, now=${now.toDate().toISOString()}, shouldDeliver=${shouldDeliver}`);
+              // Only deliver if current time is >= scheduled time AND not already delivered
+              shouldDeliver = now.toMillis() >= deliveryTime.toMillis() && submission.delivered !== true;
+              console.log(`[processScheduledDeliveries] Submission ${submissionId}: Using deliveredAt (scheduled time, Timestamp)=${deliveryTime.toDate().toISOString()}, now=${now.toDate().toISOString()}, delivered=${submission.delivered}, shouldDeliver=${shouldDeliver}`);
             } else if (typeof submission.deliveredAt === 'string') {
               // If deliveredAt is a string, parse it
               const scheduledDate = new Date(submission.deliveredAt);
               deliveryTime = admin.firestore.Timestamp.fromDate(scheduledDate);
-              shouldDeliver = now.toMillis() >= deliveryTime.toMillis();
-              console.log(`[processScheduledDeliveries] Submission ${submissionId}: Using deliveredAt (string)=${deliveryTime.toDate().toISOString()}, now=${now.toDate().toISOString()}, shouldDeliver=${shouldDeliver}`);
+              // Only deliver if current time is >= scheduled time AND not already delivered
+              shouldDeliver = now.toMillis() >= deliveryTime.toMillis() && submission.delivered !== true;
+              console.log(`[processScheduledDeliveries] Submission ${submissionId}: Using deliveredAt (scheduled time, string)=${deliveryTime.toDate().toISOString()}, now=${now.toDate().toISOString()}, delivered=${submission.delivered}, shouldDeliver=${shouldDeliver}`);
             } else {
               console.log(`[processScheduledDeliveries] Submission ${submissionId}: deliveredAt exists but is not a Timestamp or string, type=${typeof submission.deliveredAt}, value=${JSON.stringify(submission.deliveredAt)}`);
             }

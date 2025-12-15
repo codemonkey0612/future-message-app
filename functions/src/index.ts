@@ -190,10 +190,38 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
   }
   
   // Replace placeholders in email body
+  // First replace standard fields
   emailBody = emailBody
     .replace(/\{message\}/g, submission.formData?.message || "")
     .replace(/\{email\}/g, submission.formData?.email || "")
     .replace(/\{submittedAt\}/g, submittedAtDate.toLocaleString("ja-JP"));
+  
+  // Replace all custom form fields
+  if (submission.formData) {
+    for (const [key, value] of Object.entries(submission.formData)) {
+      // Skip imageUrl as it's handled separately
+      if (key !== 'imageUrl' && value !== undefined && value !== null) {
+        const placeholder = `{${key}}`;
+        const stringValue = String(value);
+        emailBody = emailBody.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), stringValue);
+      }
+    }
+  }
+  
+  // If no placeholders were used, append all form field data at the end
+  if (!emailBody.includes('{') && submission.formData) {
+    const formFieldsText: string[] = [];
+    for (const [key, value] of Object.entries(submission.formData)) {
+      if (key !== 'imageUrl' && value !== undefined && value !== null && value !== '') {
+        // Convert key to readable label (capitalize first letter)
+        const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1');
+        formFieldsText.push(`${label}: ${value}`);
+      }
+    }
+    if (formFieldsText.length > 0) {
+      emailBody += "\n\n" + formFieldsText.join("\n");
+    }
+  }
   
   console.log(`[sendEmailHelper] Email body after replacement:`, emailBody.substring(0, 200));
   console.log(`[sendEmailHelper] Message from formData:`, submission.formData?.message?.substring(0, 100));
@@ -214,46 +242,134 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
   // Convert newlines to <br> and wrap in proper HTML structure
   let htmlBody = emailBody.replace(/\n/g, "<br>");
   
-  // Handle image - convert data URL to attachment if needed
+  // Handle image - download from Firebase Storage URL and attach if needed
   const attachments: any[] = [];
   let imageCid: string | null = null;
   
   if (submission.formData?.imageUrl) {
     const imageUrl = submission.formData.imageUrl;
     
-    // Check if it's a data URL (base64)
-    if (imageUrl.startsWith('data:image/')) {
-      // Extract MIME type and base64 data
-      const matches = imageUrl.match(/^data:image\/(\w+);base64,(.+)$/);
-      if (matches) {
-        const mimeType = matches[1];
-        const base64Data = matches[2];
-        const buffer = Buffer.from(base64Data, 'base64');
-        
-        // Generate a unique CID for the image
-        imageCid = `message-image-${submissionId}`;
-        
-        // Add as attachment with CID
-        attachments.push({
-          filename: `message-image.${mimeType}`,
-          content: buffer,
-          cid: imageCid,
-          contentType: `image/${mimeType}`,
-        });
-        
-        // Reference in HTML using CID
-        htmlBody += `<br><br><div style="text-align: center; margin: 20px 0;"><img src="cid:${imageCid}" alt="Message image" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"></div>`;
-        
-        console.log(`[sendEmailHelper] Converting data URL to attachment with CID: ${imageCid}`);
-      } else {
-        // Fallback: try to use as URL
-        htmlBody += `<br><br><div style="text-align: center; margin: 20px 0;"><img src="${imageUrl}" alt="Message image" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"></div>`;
-        console.log(`[sendEmailHelper] Using image URL directly: ${imageUrl.substring(0, 50)}...`);
+    try {
+      // Skip blob: URLs - they won't work in emails (temporary browser URLs)
+      if (imageUrl.startsWith('blob:')) {
+        console.warn(`[sendEmailHelper] Skipping blob: URL - cannot be used in emails`);
+        htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #f3f4f6; border-radius: 8px; color: #6b7280;">画像は添付されていますが、プレビューを表示できませんでした。</div>`;
       }
-    } else {
-      // Regular URL - use directly
-      htmlBody += `<br><br><div style="text-align: center; margin: 20px 0;"><img src="${imageUrl}" alt="Message image" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"></div>`;
-      console.log(`[sendEmailHelper] Using image URL: ${imageUrl}`);
+      // Check if it's a data URL (base64) - for backward compatibility
+      else if (imageUrl.startsWith('data:image/')) {
+        // Extract MIME type and base64 data
+        const matches = imageUrl.match(/^data:image\/(\w+);base64,(.+)$/);
+        if (matches) {
+          const mimeType = matches[1];
+          const base64Data = matches[2];
+          
+          // Check size - if base64 is too large, email might be rejected
+          const base64Size = base64Data.length * 3 / 4; // Approximate binary size
+          const maxSize = 3 * 1024 * 1024; // 3MB limit for email attachments
+          
+          if (base64Size > maxSize) {
+            console.warn(`[sendEmailHelper] Image too large (${Math.round(base64Size / 1024)}KB), cannot attach`);
+            htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fef3c7; border-radius: 8px; color: #92400e;">画像が大きすぎるため、添付できませんでした。</div>`;
+          } else {
+            const buffer = Buffer.from(base64Data, 'base64');
+            
+            // Generate a unique CID for the image
+            imageCid = `message-image-${submissionId}`;
+            
+            // Add as attachment with CID
+            attachments.push({
+              filename: `message-image.${mimeType}`,
+              content: buffer,
+              cid: imageCid,
+              contentType: `image/${mimeType}`,
+            });
+            
+            // Reference in HTML using CID
+            htmlBody += `<br><br><div style="text-align: center; margin: 20px 0;"><img src="cid:${imageCid}" alt="Message image" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"></div>`;
+            
+            console.log(`[sendEmailHelper] Converting data URL to attachment with CID: ${imageCid}, size: ${Math.round(buffer.length / 1024)}KB`);
+          }
+        } else {
+          console.warn(`[sendEmailHelper] Invalid data URL format`);
+          htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fee2e2; border-radius: 8px; color: #991b1b;">画像の形式が正しくありませんでした。</div>`;
+        }
+      } 
+      // Firebase Storage URL or regular HTTP/HTTPS URL - download and attach
+      else if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+        try {
+          console.log(`[sendEmailHelper] Attempting to download image from: ${imageUrl.substring(0, 100)}...`);
+          
+          // Fetch the image with a timeout
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+          
+          const imageResponse = await fetch(imageUrl, {
+            signal: controller.signal,
+            headers: {
+              'User-Agent': 'FutureMessageApp/1.0'
+            }
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (imageResponse.ok) {
+            const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+            const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+            
+            console.log(`[sendEmailHelper] Image downloaded successfully, size: ${Math.round(imageBuffer.length / 1024)}KB, content-type: ${contentType}`);
+            
+            // Check size before attaching
+            const maxSize = 3 * 1024 * 1024; // 3MB limit
+            if (imageBuffer.length > maxSize) {
+              console.warn(`[sendEmailHelper] Image too large (${Math.round(imageBuffer.length / 1024)}KB), cannot attach`);
+              htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fef3c7; border-radius: 8px; color: #92400e;">画像が大きすぎるため、添付できませんでした。</div>`;
+            } else if (imageBuffer.length === 0) {
+              console.warn(`[sendEmailHelper] Image buffer is empty`);
+              htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fee2e2; border-radius: 8px; color: #991b1b;">画像のダウンロードに失敗しました。</div>`;
+            } else {
+              // Determine file extension from content type or URL
+              let ext = 'jpg';
+              if (contentType.includes('png')) ext = 'png';
+              else if (contentType.includes('gif')) ext = 'gif';
+              else if (contentType.includes('webp')) ext = 'webp';
+              else {
+                // Try to get extension from URL
+                const urlMatch = imageUrl.match(/\.(jpg|jpeg|png|gif|webp)(\?|$)/i);
+                if (urlMatch) ext = urlMatch[1].toLowerCase();
+              }
+              
+              // Generate a unique CID for the image
+              imageCid = `message-image-${submissionId}`;
+              
+              // Add as attachment with CID
+              attachments.push({
+                filename: `message-image.${ext}`,
+                content: imageBuffer,
+                cid: imageCid,
+                contentType: contentType,
+              });
+              
+              // Reference in HTML using CID
+              htmlBody += `<br><br><div style="text-align: center; margin: 20px 0;"><img src="cid:${imageCid}" alt="Message image" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"></div>`;
+              
+              console.log(`[sendEmailHelper] Successfully attached image with CID: ${imageCid}`);
+            }
+          } else {
+            console.error(`[sendEmailHelper] Failed to download image: HTTP ${imageResponse.status} ${imageResponse.statusText}`);
+            htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fee2e2; border-radius: 8px; color: #991b1b;">画像のダウンロードに失敗しました (HTTP ${imageResponse.status})。</div>`;
+          }
+        } catch (fetchError: any) {
+          // If fetch fails, log error but don't use URL directly (email clients block external images)
+          console.error(`[sendEmailHelper] Error downloading image:`, fetchError.message || fetchError);
+          htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fee2e2; border-radius: 8px; color: #991b1b;">画像の取得に失敗しました: ${fetchError.message || 'Unknown error'}。</div>`;
+        }
+      } else {
+        console.warn(`[sendEmailHelper] Unsupported image URL format: ${imageUrl.substring(0, 50)}`);
+        htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fef3c7; border-radius: 8px; color: #92400e;">画像URLの形式がサポートされていません。</div>`;
+      }
+    } catch (error: any) {
+      console.error(`[sendEmailHelper] Unexpected error processing image:`, error);
+      htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fee2e2; border-radius: 8px; color: #991b1b;">画像の処理中にエラーが発生しました。</div>`;
     }
   }
   

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Campaign, Submission } from '../../types';
-import { addSubmission } from '../../services/firestoreService';
+import { addSubmission, uploadFile } from '../../services/firestoreService';
 import SurveyModal from './SurveyModal';
 import Spinner from '../../components/common/Spinner';
 import ArrowUpTrayIcon from '../../components/icons/ArrowUpTrayIcon';
@@ -21,6 +21,8 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
   const [modalContent, setModalContent] = useState<{ title: string; content: string } | null>(null);
   const [uploadText, setUploadText] = useState('クリックしてアップロード');
   const [hasAlreadySubmitted, setHasAlreadySubmitted] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
 
   const { form: formSettings, survey: surveySettings, content } = campaign.settings;
 
@@ -37,19 +39,109 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
     }
   }, [campaign.id]);
 
+  // Cleanup object URLs on unmount or when preview changes
+  useEffect(() => {
+    return () => {
+      // Clean up object URL when component unmounts or preview changes
+      if (imagePreview && imagePreview.startsWith('blob:')) {
+        URL.revokeObjectURL(imagePreview);
+      }
+    };
+  }, [imagePreview]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
   
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
+  const validateImageFile = (file: File): string | null => {
+    // Check file type
+    if (!file.type.startsWith('image/')) {
+      return '画像ファイルを選択してください。';
+    }
+
+    // Check file size (5MB limit for email compatibility)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      return 'ファイルサイズは5MB以下にしてください。';
+    }
+
+    return null;
+  };
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('handleImageChange called');
+    
+    if (!e.target.files || !e.target.files[0]) {
+      console.log('No file selected');
+      return;
+    }
+
+    const file = e.target.files[0];
+    console.log('File selected:', file.name, file.type, file.size);
+    
+    // Clear previous errors
+    setImageError(null);
+    
+    // Validate file
+    const validationError = validateImageFile(file);
+    if (validationError) {
+      console.log('Validation error:', validationError);
+      setImageError(validationError);
+      e.target.value = ''; // Reset input
+      setImagePreview(null);
+      return;
+    }
+
+    // Create preview using URL.createObjectURL for immediate display
+    // This is more reliable and faster than FileReader
+    try {
+      // Clean up previous object URL if it exists
+      if (imagePreview && imagePreview.startsWith('blob:')) {
+        URL.revokeObjectURL(imagePreview);
+      }
+      
+      // Create object URL for immediate preview
+      const objectUrl = URL.createObjectURL(file);
+      console.log('Created object URL for preview:', objectUrl);
+      setImagePreview(objectUrl);
+      
+      // Also create a data URL for storage (in case we need it)
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-        setFormData({ ...formData, imageUrl: reader.result as string });
+      reader.onload = (event) => {
+        const dataUrl = event.target?.result as string;
+        if (dataUrl && dataUrl.startsWith('data:image/')) {
+          // Keep the object URL for preview, but we have data URL as backup
+          console.log('Data URL also created for backup');
+        }
       };
       reader.readAsDataURL(file);
+      
+      // Start upload in background
+      setUploadingImage(true);
+      const timestamp = Date.now();
+      const fileExtension = file.name.split('.').pop() || 'jpg';
+      const filePath = `submissions/${campaign.id}/${timestamp}_${Math.random().toString(36).substring(7)}.${fileExtension}`;
+      
+      uploadFile(filePath, file)
+        .then((downloadURL) => {
+          console.log('Upload successful:', downloadURL);
+          setFormData((prevData) => ({ ...prevData, imageUrl: downloadURL }));
+          setImageError(null);
+          // Optionally switch to Firebase Storage URL for preview, or keep object URL
+          // Keeping object URL is fine for preview
+        })
+        .catch((uploadError) => {
+          console.error("Upload failed:", uploadError);
+          setImageError("画像のアップロードに失敗しましたが、プレビューは表示されています。");
+        })
+        .finally(() => {
+          setUploadingImage(false);
+        });
+    } catch (err) {
+      console.error('Error creating object URL:', err);
+      setImageError("画像のプレビュー作成に失敗しました。");
+      setImagePreview(null);
+      setUploadingImage(false);
     }
   };
 
@@ -258,20 +350,81 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
             <label className="block text-sm font-medium text-gray-700">{formSettings.fields.image.label}</label>
              <div 
                 className="mt-2 flex justify-center items-center rounded-lg border border-dashed border-gray-900/25 px-6 py-8 text-center relative cursor-pointer hover:border-primary hover:bg-gray-50 transition-all group"
-                onClick={() => document.getElementById('image')?.click()}
+                onClick={() => {
+                  if (!uploadingImage) {
+                    const fileInput = document.getElementById('image') as HTMLInputElement;
+                    if (fileInput) {
+                      fileInput.click();
+                    }
+                  }
+                }}
             >
-                <input type="file" id="image" name="image" accept="image/*" onChange={handleImageChange} className="sr-only" />
+                <input 
+                  type="file" 
+                  id="image" 
+                  name="image" 
+                  accept="image/*" 
+                  onChange={handleImageChange} 
+                  className="sr-only" 
+                  disabled={uploadingImage}
+                />
                 {imagePreview ? (
                      <div className="flex flex-col items-center w-full">
-                        <div className="relative">
-                            <img src={imagePreview} alt="Preview" className="max-h-64 w-auto rounded-lg object-contain shadow-md" />
-                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-5 transition-all duration-200 rounded-lg"></div>
+                        <div className="relative w-full flex justify-center bg-white rounded-lg p-4 border border-gray-200 min-h-[200px]">
+                            <img 
+                              key={imagePreview.substring(0, 50)} 
+                              src={imagePreview} 
+                              alt="Preview" 
+                              className="rounded-lg shadow-md" 
+                              style={{ 
+                                display: 'block',
+                                maxWidth: '100%',
+                                maxHeight: '256px',
+                                width: 'auto',
+                                height: 'auto',
+                                objectFit: 'contain',
+                                backgroundColor: 'white'
+                              }}
+                              onError={(e) => {
+                                console.error("IMG onError - Failed to load preview");
+                                console.error("URL exists:", !!imagePreview);
+                                if (imagePreview) {
+                                  console.error("URL length:", imagePreview.length);
+                                  console.error("URL start:", imagePreview.substring(0, 100));
+                                }
+                                const target = e.target as HTMLImageElement;
+                                target.style.backgroundColor = '#f3f4f6';
+                                target.style.display = 'none';
+                                setImageError("画像のプレビューに失敗しました。");
+                              }}
+                              onLoad={(e) => {
+                                console.log("IMG onLoad - Preview loaded successfully");
+                                const target = e.target as HTMLImageElement;
+                                console.log("Dimensions:", target.naturalWidth, "x", target.naturalHeight);
+                                target.style.display = 'block';
+                                target.style.opacity = '1';
+                                setImageError(null);
+                              }}
+                            />
+                            {uploadingImage && (
+                              <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-90 rounded-lg">
+                                <div className="bg-white rounded-lg p-4 flex flex-col items-center shadow-lg border border-gray-200">
+                                  <Spinner />
+                                  <p className="mt-2 text-sm text-gray-700">アップロード中...</p>
+                                </div>
+                              </div>
+                            )}
                         </div>
-                        <p className="mt-4 text-sm font-medium text-primary bg-white px-4 py-2 rounded-full shadow-sm border border-gray-200 flex items-center gap-2 group-hover:bg-primary group-hover:text-white transition-colors">
+                        <p className="mt-4 text-sm font-medium text-primary bg-white px-4 py-2 rounded-full shadow-sm border border-gray-200 flex items-center gap-2 group-hover:bg-primary group-hover:text-white transition-colors cursor-pointer">
                              <ArrowUpTrayIcon className="w-4 h-4" />
                              写真を変更する
                         </p>
                     </div>
+                ) : uploadingImage ? (
+                  <div className="flex flex-col items-center">
+                    <Spinner />
+                    <p className="mt-2 text-sm text-gray-600">処理中...</p>
+                  </div>
                 ) : (
                     <div>
                         <ArrowUpTrayIcon className="mx-auto h-12 w-12 text-gray-300 group-hover:text-primary transition-colors" />
@@ -279,9 +432,13 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
                             <span className="font-semibold" style={{ color: campaign.settings.design.themeColor }}>{uploadText}</span>
                         </p>
                         <p className="text-xs text-gray-500">またはファイルをドラッグ</p>
+                        <p className="text-xs text-gray-400 mt-1">対応形式: JPEG, PNG, GIF (最大5MB)</p>
                     </div>
                 )}
             </div>
+            {imageError && (
+              <p className="mt-1 text-sm text-red-600">{imageError}</p>
+            )}
           </div>
         )}
 

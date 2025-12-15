@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Campaign, Submission } from '../../types';
-import { addSubmission } from '../../services/firestoreService';
+import { addSubmission, uploadFile } from '../../services/firestoreService';
 import SurveyModal from './SurveyModal';
 import Spinner from '../../components/common/Spinner';
 
@@ -17,6 +17,8 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionSuccess, setSubmissionSuccess] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
 
   const { form: formSettings, survey: surveySettings } = campaign.settings;
 
@@ -24,15 +26,65 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
   
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
+  const validateImageFile = (file: File): string | null => {
+    // Check file type
+    if (!file.type.startsWith('image/')) {
+      return '画像ファイルを選択してください。';
+    }
+
+    // Check file size (5MB limit for email compatibility)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      return 'ファイルサイズは5MB以下にしてください。';
+    }
+
+    return null;
+  };
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0]) {
+      return;
+    }
+
+    const file = e.target.files[0];
+    
+    // Clear previous errors
+    setImageError(null);
+    
+    // Validate file
+    const validationError = validateImageFile(file);
+    if (validationError) {
+      setImageError(validationError);
+      e.target.value = ''; // Reset input
+      return;
+    }
+
+    setUploadingImage(true);
+    
+    try {
+      // Create preview from file (for immediate display)
       const reader = new FileReader();
       reader.onloadend = () => {
         setImagePreview(reader.result as string);
-        setFormData({ ...formData, imageUrl: reader.result as string });
       };
       reader.readAsDataURL(file);
+      
+      // Upload to Firebase Storage
+      const timestamp = Date.now();
+      const fileExtension = file.name.split('.').pop() || 'jpg';
+      const filePath = `submissions/${campaign.id}/${timestamp}_${Math.random().toString(36).substring(7)}.${fileExtension}`;
+      const downloadURL = await uploadFile(filePath, file);
+      
+      // Store the Firebase Storage URL instead of base64
+      setFormData({ ...formData, imageUrl: downloadURL });
+      setImageError(null);
+    } catch (error: any) {
+      console.error("Image upload failed:", error);
+      setImageError("画像のアップロードに失敗しました。もう一度お試しください。");
+      setImagePreview(null);
+      e.target.value = ''; // Reset input
+    } finally {
+      setUploadingImage(false);
     }
   };
 
@@ -126,8 +178,36 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
         {formSettings.fields.image.enabled && (
           <div>
             <label htmlFor="image" className="block text-sm font-medium text-gray-700">{formSettings.fields.image.label}</label>
-            <input type="file" id="image" name="image" accept="image/*" onChange={handleImageChange} className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20" />
-            {imagePreview && <img src={imagePreview} alt="Preview" className="mt-4 max-h-48 rounded-lg" />}
+            <input 
+              type="file" 
+              id="image" 
+              name="image" 
+              accept="image/*" 
+              onChange={handleImageChange} 
+              className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20" 
+              disabled={uploadingImage}
+            />
+            {uploadingImage && (
+              <div className="mt-2 flex items-center gap-2">
+                <Spinner />
+                <span className="text-sm text-gray-600">アップロード中...</span>
+              </div>
+            )}
+            {imagePreview && !uploadingImage && (
+              <img 
+                src={imagePreview} 
+                alt="Preview" 
+                className="mt-4 max-h-48 rounded-lg object-contain"
+                onError={() => {
+                  console.error("Failed to load image preview");
+                  setImageError("画像のプレビューに失敗しました。");
+                }}
+              />
+            )}
+            {imageError && (
+              <p className="mt-1 text-sm text-red-600">{imageError}</p>
+            )}
+            <p className="mt-1 text-xs text-gray-400">対応形式: JPEG, PNG, GIF (最大5MB)</p>
           </div>
         )}
 

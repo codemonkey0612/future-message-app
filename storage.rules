@@ -23,15 +23,16 @@ service firebase.storage {
     }
     
     // User uploaded images (submissions) - public can upload, admins can read/delete
-    match /submissions/{submissionId}/{allPaths=**} {
-      // Anyone can upload submission images
+    // Allow submissions/{anything}/{allPaths} for flexibility (campaignId or submissionId)
+    match /submissions/{anyId}/{allPaths=**} {
+      // Anyone can upload submission images (size and type limited)
       allow write: if request.resource.size < 10 * 1024 * 1024 && // 10MB limit
                      request.resource.contentType.matches('image/.*');
       
       // Admins can read and delete
       allow read, delete: if isAdmin();
       
-      // Public can read their own submissions (optional - remove if not needed)
+      // Public can read submission images (needed for email display)
       allow read: if true;
     }
     

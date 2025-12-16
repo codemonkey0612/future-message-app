@@ -534,9 +534,23 @@ async function sendLineHelper(submissionId: string, campaignId: string): Promise
     throw new Error("This submission is not configured for LINE delivery");
   }
 
-  if (!submission.lineUserId) {
-    throw new Error("LINE user ID not found in submission");
+  // Get LINE user ID from formData.lineId (entered by user)
+  // Note: This is the LINE User ID that the user enters in the form.
+  // The LINE User ID must belong to an account that has added the LINE bot as a friend.
+  // To test: Get your LINE User ID from LINE Developers Console or by having a user message your bot.
+  console.log('[sendLineHelper] Submission formData:', JSON.stringify(submission.formData, null, 2));
+  const lineUserId = submission.formData?.lineId;
+  console.log('[sendLineHelper] Extracted LINE user ID:', lineUserId);
+  
+  if (!lineUserId || typeof lineUserId !== 'string' || !lineUserId.trim()) {
+    console.error('[sendLineHelper] LINE user ID is missing or invalid:', lineUserId);
+    throw new Error("LINE user ID not found in submission formData or is invalid");
   }
+  
+  // Trim and use the LINE user ID
+  // LINE User IDs typically start with 'U' followed by alphanumeric characters
+  const trimmedLineUserId = lineUserId.trim();
+  console.log('[sendLineHelper] Using trimmed LINE user ID:', trimmedLineUserId);
 
   if (!campaign.lineChannelId || !campaign.lineChannelSecret) {
     throw new Error("Campaign LINE configuration is incomplete");
@@ -671,7 +685,7 @@ async function sendLineHelper(submissionId: string, campaignId: string): Promise
   }
 
   // Send LINE message using Push Message API
-  console.log(`[sendLineHelper] Sending LINE message to user ${submission.lineUserId} with ${messages.length} message(s)`);
+  console.log(`[sendLineHelper] Sending LINE message to user ${trimmedLineUserId} with ${messages.length} message(s)`);
   const messageResponse = await fetch("https://api.line.me/v2/bot/message/push", {
     method: "POST",
     headers: {
@@ -679,7 +693,7 @@ async function sendLineHelper(submissionId: string, campaignId: string): Promise
       Authorization: `Bearer ${tokenData.access_token}`,
     },
     body: JSON.stringify({
-      to: submission.lineUserId,
+      to: trimmedLineUserId,
       messages: messages,
     }),
   });

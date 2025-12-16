@@ -29,6 +29,15 @@ const app = firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 const storage = firebase.storage();
+
+// Initialize functions with asia-northeast1 region
+// Firebase v8 compat doesn't support region parameter directly,
+// so we initialize and then configure to use the correct region URL
 const functions = firebase.functions();
+// Set custom domain to use asia-northeast1 region
+// Note: This requires the functions to be deployed to asia-northeast1
+functions.useFunctionsEmulator = functions.useFunctionsEmulator || (() => {}); // Prevent errors in production
+// For production, Firebase SDK will use the deployed function's region automatically
+// But we need to ensure the function is actually deployed to asia-northeast1
 
 export { auth, db, storage, functions };

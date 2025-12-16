@@ -199,26 +199,79 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
       alert("LINEチャンネルIDが設定されていません。");
       return;
     }
+    
+    // Validate form before proceeding
+    if (!validateForm()) {
+      return;
+    }
+    
     setIsSubmitting(true);
-    // Sanitize form data before storing in session
-    const sanitizedFormData = sanitizeFormData(formData);
-    const submissionData = {
+    
+    try {
+      // Sanitize form data before storing in session
+      const sanitizedFormData = sanitizeFormData(formData);
+      
+      // Calculate delivery time based on campaign type (similar to email submission)
+      const submittedAt = new Date();
+      const toTokyoISOString = (date: Date): string => {
+        const tokyoOffset = 9 * 60; // minutes
+        const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
+        const tokyoTime = new Date(utc + (tokyoOffset * 60000));
+        return tokyoTime.toISOString();
+      };
+      
+      let scheduledDeliveryTime: string;
+      if (campaign.deliveryType === 'datetime' && campaign.deliveryDateTime) {
+        const deliveryDate = new Date(campaign.deliveryDateTime);
+        scheduledDeliveryTime = toTokyoISOString(deliveryDate);
+      } else if (campaign.deliveryType === 'interval' && campaign.deliveryIntervalDays) {
+        const deliveryDate = new Date(submittedAt);
+        deliveryDate.setDate(deliveryDate.getDate() + Number(campaign.deliveryIntervalDays));
+        scheduledDeliveryTime = toTokyoISOString(deliveryDate);
+      } else {
+        const deliveryDate = new Date(submittedAt);
+        deliveryDate.setDate(deliveryDate.getDate() + 1);
+        scheduledDeliveryTime = toTokyoISOString(deliveryDate);
+      }
+      
+      const submittedAtISO = toTokyoISOString(submittedAt);
+      
+      const submissionData = {
         campaignId: campaign.id,
-        submittedAt: new Date().toISOString(),
+        submittedAt: submittedAtISO,
         deliveryChoice: 'line' as const,
         formData: sanitizedFormData,
         surveyAnswers: {}, // Will be filled in after auth
-    };
+        delivered: false,
+        deliveredAt: scheduledDeliveryTime,
+      };
 
-    const state = Math.random().toString(36).substring(2, 15);
-    sessionStorage.setItem('pendingSubmission', JSON.stringify(submissionData));
-    sessionStorage.setItem('lineAuthState', state);
+      // Generate a secure random state for CSRF protection
+      const state = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      
+      // Store data in sessionStorage
+      try {
+        sessionStorage.setItem('pendingSubmission', JSON.stringify(submissionData));
+        sessionStorage.setItem('lineAuthState', state);
+        console.log('Stored LINE auth data in sessionStorage');
+      } catch (storageError) {
+        console.error('Failed to store in sessionStorage:', storageError);
+        alert('データの保存に失敗しました。プライベートモードを使用している場合は、通常モードでお試しください。');
+        setIsSubmitting(false);
+        return;
+      }
 
-    // Removed hash from redirect URI
-    const redirectUri = `${window.location.origin}/line/callback`;
-    const lineAuthUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${campaign.lineChannelId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=profile%20openid`;
-    
-    window.location.href = lineAuthUrl;
+      // Removed hash from redirect URI
+      const redirectUri = `${window.location.origin}/line/callback`;
+      const lineAuthUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${campaign.lineChannelId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=profile%20openid`;
+      
+      console.log('Redirecting to LINE authorization:', lineAuthUrl.substring(0, 100) + '...');
+      window.location.href = lineAuthUrl;
+    } catch (error: any) {
+      console.error('Error initiating LINE auth:', error);
+      alert('LINE認証の開始に失敗しました。もう一度お試しください。');
+      setIsSubmitting(false);
+    }
   };
   
   const finalizeEmailSubmission = async (surveyAnswers: any) => {

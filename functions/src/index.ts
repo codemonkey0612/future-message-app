@@ -38,43 +38,59 @@ const getEmailTransporter = () => {
  * Exchange LINE OAuth authorization code for access token
  * This keeps the LINE Channel Secret secure on the server
  */
-export const exchangeLineToken = functions.region('asia-northeast1').https.onCall(async (data, context) => {
-  // Verify the request is authenticated (optional - remove if you want public access)
-  // if (!context.auth) {
-  //   throw new functions.https.HttpsError(
-  //     "unauthenticated",
-  //     "The function must be called while authenticated."
-  //   );
-  // }
+/**
+ * Exchange LINE OAuth authorization code for access token
+ * Using onRequest instead of onCall to avoid region/CORS issues with Firebase v8
+ */
+export const exchangeLineToken = functions.region('asia-northeast1').https.onRequest(async (req, res) => {
+  // Enable CORS
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
 
-  const { code, redirectUri, campaignId } = data as { code?: string; redirectUri?: string; campaignId?: string };
+  // Handle preflight request
+  if (req.method === 'OPTIONS') {
+    res.status(204).send('');
+    return;
+  }
 
-  // Validate input
-  if (!code || !redirectUri || !campaignId) {
-    throw new functions.https.HttpsError(
-      "invalid-argument",
-      "Missing required parameters: code, redirectUri, or campaignId"
-    );
+  // Only allow POST
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
   }
 
   try {
+    const { code, redirectUri, campaignId } = req.body as { code?: string; redirectUri?: string; campaignId?: string };
+
+    // Validate input
+    if (!code || !redirectUri || !campaignId) {
+      res.status(400).json({
+        error: "invalid-argument",
+        message: "Missing required parameters: code, redirectUri, or campaignId"
+      });
+      return;
+    }
+
     // Get campaign from Firestore to retrieve LINE credentials
     const campaignDoc = await admin.firestore().collection("campaigns").doc(campaignId).get();
     
     if (!campaignDoc.exists) {
-      throw new functions.https.HttpsError(
-        "not-found",
-        "Campaign not found"
-      );
+      res.status(404).json({
+        error: "not-found",
+        message: "Campaign not found"
+      });
+      return;
     }
 
     const campaign = campaignDoc.data();
     
     if (!campaign?.lineChannelId || !campaign?.lineChannelSecret) {
-      throw new functions.https.HttpsError(
-        "failed-precondition",
-        "Campaign LINE configuration is incomplete"
-      );
+      res.status(400).json({
+        error: "failed-precondition",
+        message: "Campaign LINE configuration is incomplete"
+      });
+      return;
     }
 
     // Exchange authorization code for access token
@@ -95,10 +111,11 @@ export const exchangeLineToken = functions.region('asia-northeast1').https.onCal
     const tokenData = await tokenResponse.json();
 
     if (!tokenResponse.ok || !tokenData.id_token) {
-      throw new functions.https.HttpsError(
-        "internal",
-        tokenData.error_description || "Failed to exchange LINE token"
-      );
+      res.status(500).json({
+        error: "internal",
+        message: tokenData.error_description || "Failed to exchange LINE token"
+      });
+      return;
     }
 
     // Decode ID token to get user ID
@@ -108,28 +125,24 @@ export const exchangeLineToken = functions.region('asia-northeast1').https.onCal
     const lineUserId = idTokenPayload.sub;
 
     if (!lineUserId) {
-      throw new functions.https.HttpsError(
-        "internal",
-        "Failed to extract LINE user ID from token"
-      );
+      res.status(500).json({
+        error: "internal",
+        message: "Failed to extract LINE user ID from token"
+      });
+      return;
     }
 
     // Return the LINE user ID (don't return the full token for security)
-    return {
+    res.status(200).json({
       lineUserId,
       success: true,
-    };
+    });
   } catch (error: any) {
     console.error("LINE token exchange error:", error);
-    
-    if (error instanceof functions.https.HttpsError) {
-      throw error;
-    }
-    
-    throw new functions.https.HttpsError(
-      "internal",
-      error.message || "An error occurred during LINE token exchange"
-    );
+    res.status(500).json({
+      error: "internal",
+      message: error.message || "An error occurred during LINE token exchange"
+    });
   }
 });
 
@@ -548,10 +561,117 @@ async function sendLineHelper(submissionId: string, campaignId: string): Promise
     throw new Error("Failed to get LINE access token");
   }
 
-  // Prepare message content
-  const lineMessage = campaign.lineMessage || submission.formData?.message || "未来へのメッセージ";
+  // Prepare message content - use the actual form data message
+  // Include all form fields similar to email
+  let lineMessage = submission.formData?.message || "未来へのメッセージ";
+  
+  // Add custom form fields to the message
+  if (submission.formData) {
+    const formFieldsText: string[] = [];
+    for (const [key, value] of Object.entries(submission.formData)) {
+      if (key !== 'imageUrl' && key !== 'message' && value !== undefined && value !== null && value !== '') {
+        // Convert key to readable label
+        const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1');
+        formFieldsText.push(`${label}: ${value}`);
+      }
+    }
+    if (formFieldsText.length > 0) {
+      lineMessage += "\n\n" + formFieldsText.join("\n");
+    }
+  }
+  
+  // If campaign has a custom LINE message template, use it and replace placeholders
+  if (campaign.lineMessage) {
+    let templateMessage = campaign.lineMessage;
+    // Replace placeholders
+    templateMessage = templateMessage.replace(/\{message\}/g, submission.formData?.message || "");
+    if (submission.formData) {
+      for (const [key, value] of Object.entries(submission.formData)) {
+        if (key !== 'imageUrl' && value !== undefined && value !== null) {
+          const placeholder = `{${key}}`;
+          templateMessage = templateMessage.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), String(value));
+        }
+      }
+    }
+    lineMessage = templateMessage;
+  }
+
+  // Prepare messages array
+  const messages: any[] = [
+    {
+      type: "text",
+      text: lineMessage,
+    },
+  ];
+
+  // Handle image if available
+  if (submission.formData?.imageUrl) {
+    const imageUrl = submission.formData.imageUrl;
+    
+    try {
+      // Skip blob: URLs - they won't work (temporary browser URLs)
+      if (imageUrl.startsWith('blob:')) {
+        console.warn(`[sendLineHelper] Skipping blob: URL - cannot be used in LINE messages`);
+      }
+      // For data URLs - these should have been uploaded to Firebase Storage already
+      // But for backward compatibility, we'll skip them with a warning
+      else if (imageUrl.startsWith('data:image/')) {
+        console.warn(`[sendLineHelper] Data URL found - images should be uploaded to Firebase Storage. Skipping image.`);
+        // Note: In production, formData.imageUrl should always be a Firebase Storage URL
+        // If we see data URLs here, it means old submissions or the upload failed
+      }
+      // For HTTPS URLs (Firebase Storage), use them directly
+      // LINE API requires publicly accessible HTTPS URLs (not HTTP)
+      else if (imageUrl.startsWith('https://')) {
+        // Verify the URL is accessible and is HTTPS
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+          
+          const testResponse = await fetch(imageUrl, { 
+            method: 'HEAD', 
+            signal: controller.signal,
+            headers: {
+              'User-Agent': 'FutureMessageApp/1.0'
+            }
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (testResponse.ok) {
+            const contentType = testResponse.headers.get('content-type') || '';
+            // LINE supports JPEG and PNG
+            if (contentType.includes('image/jpeg') || contentType.includes('image/png') || contentType.includes('image/')) {
+              messages.push({
+                type: "image",
+                originalContentUrl: imageUrl,
+                previewImageUrl: imageUrl, // Use same URL for preview
+              });
+              console.log(`[sendLineHelper] Added image to LINE message: ${imageUrl.substring(0, 100)}...`);
+            } else {
+              console.warn(`[sendLineHelper] Image content type not supported by LINE: ${contentType}`);
+            }
+          } else {
+            console.warn(`[sendLineHelper] Image URL not accessible (HTTP ${testResponse.status}), skipping image`);
+          }
+        } catch (fetchError: any) {
+          console.warn(`[sendLineHelper] Could not verify image URL accessibility: ${fetchError.message || fetchError}, skipping image`);
+        }
+      } 
+      // HTTP URLs are not supported by LINE API (must be HTTPS)
+      else if (imageUrl.startsWith('http://')) {
+        console.warn(`[sendLineHelper] HTTP URLs not supported by LINE API (must be HTTPS), skipping image`);
+      } else {
+        console.warn(`[sendLineHelper] Unsupported image URL format: ${imageUrl.substring(0, 50)}`);
+      }
+    } catch (error) {
+      console.error(`[sendLineHelper] Error processing image:`, error);
+      // Continue without image if there's an error
+    }
+  }
 
   // Send LINE message using Push Message API
+  console.log(`[sendLineHelper] Sending LINE message to user ${submission.lineUserId} with ${messages.length} message(s)`);
   const messageResponse = await fetch("https://api.line.me/v2/bot/message/push", {
     method: "POST",
     headers: {
@@ -560,22 +680,7 @@ async function sendLineHelper(submissionId: string, campaignId: string): Promise
     },
     body: JSON.stringify({
       to: submission.lineUserId,
-      messages: [
-        {
-          type: "text",
-          text: lineMessage,
-        },
-        // Optional: include image if available
-        ...(submission.formData?.imageUrl
-          ? [
-              {
-                type: "image",
-                originalContentUrl: submission.formData.imageUrl,
-                previewImageUrl: submission.formData.imageUrl,
-              },
-            ]
-          : []),
-      ],
+      messages: messages,
     }),
   });
 

@@ -21,21 +21,59 @@ const LineCallback: React.FC = () => {
       const params = new URLSearchParams(location.search);
       const code = params.get('code');
       const state = params.get('state');
+      const error = params.get('error');
+      const errorDescription = params.get('error_description');
+
+      // Check for LINE authorization errors
+      if (error) {
+        console.error('LINE authorization error:', error, errorDescription);
+        const errorMsg = errorDescription 
+          ? `LINE認証エラー: ${errorDescription}` 
+          : `LINE認証エラー: ${error}`;
+        
+        // Try to get campaign ID from sessionStorage before clearing
+        let campaignIdForError: string | null = null;
+        try {
+          const pendingSubmissionJSON = sessionStorage.getItem('pendingSubmission');
+          if (pendingSubmissionJSON) {
+            campaignIdForError = JSON.parse(pendingSubmissionJSON).campaignId;
+          }
+        } catch(e) { /* ignore */ }
+        
+        sessionStorage.removeItem('lineAuthState');
+        sessionStorage.removeItem('pendingSubmission');
+        
+        if (campaignIdForError) {
+          try {
+            const campaignData = await getCampaign(campaignIdForError);
+            setCampaign(campaignData);
+          } catch (e) {
+            console.error("Could not fetch campaign for error page", e);
+          }
+        }
+        
+        setErrorMessage(errorMsg);
+        setStatus('error');
+        return;
+      }
 
       const storedState = sessionStorage.getItem('lineAuthState');
       const pendingSubmissionJSON = sessionStorage.getItem('pendingSubmission');
       
+      console.log('LINE callback params:', { code: !!code, state, storedState: !!storedState, pendingSubmission: !!pendingSubmissionJSON });
+      
       let campaignIdForError: string | null = null;
       if (pendingSubmissionJSON) {
         try {
-          campaignIdForError = JSON.parse(pendingSubmissionJSON).campaignId;
-        } catch(e) { /* ignore */ }
+          const pendingData = JSON.parse(pendingSubmissionJSON);
+          campaignIdForError = pendingData.campaignId;
+        } catch(e) {
+          console.error('Error parsing pendingSubmission:', e);
+        }
       }
 
-      sessionStorage.removeItem('lineAuthState');
-      sessionStorage.removeItem('pendingSubmission');
-      
       const handleError = async (message: string) => {
+        console.error('LINE callback error:', message);
         setErrorMessage(message);
         if (campaignIdForError && !campaign) {
           try {
@@ -48,8 +86,22 @@ const LineCallback: React.FC = () => {
         setStatus('error');
       };
 
-      if (!code || !state || !storedState || !pendingSubmissionJSON) {
-        await handleError('無効なリクエストです。もう一度お試しください。');
+      // Clear sessionStorage after checking
+      sessionStorage.removeItem('lineAuthState');
+      sessionStorage.removeItem('pendingSubmission');
+
+      if (!code) {
+        await handleError('認証コードが取得できませんでした。もう一度お試しください。');
+        return;
+      }
+
+      if (!state || !storedState) {
+        await handleError('認証状態が確認できませんでした。もう一度お試しください。');
+        return;
+      }
+
+      if (!pendingSubmissionJSON) {
+        await handleError('送信データが見つかりませんでした。最初からやり直してください。');
         return;
       }
 
@@ -59,34 +111,122 @@ const LineCallback: React.FC = () => {
       }
       
       try {
-        const pendingSubmission: Omit<Submission, 'id' | 'lineUserId'> = JSON.parse(pendingSubmissionJSON);
+        let pendingSubmission: Omit<Submission, 'id' | 'lineUserId'>;
+        try {
+          pendingSubmission = JSON.parse(pendingSubmissionJSON);
+        } catch (parseError) {
+          throw new Error('送信データの解析に失敗しました。');
+        }
+
+        if (!pendingSubmission.campaignId) {
+          throw new Error('キャンペーンIDが見つかりませんでした。');
+        }
+
         const fetchedCampaign = await getCampaign(pendingSubmission.campaignId);
-        if (!fetchedCampaign || !fetchedCampaign.lineChannelId || !fetchedCampaign.lineChannelSecret) {
-          throw new Error('キャンペーン設定が不完全です。');
+        if (!fetchedCampaign) {
+          throw new Error('キャンペーンが見つかりませんでした。');
+        }
+
+        if (!fetchedCampaign.lineChannelId || !fetchedCampaign.lineChannelSecret) {
+          throw new Error('LINEチャンネル設定が不完全です。管理画面でLINEチャンネルIDとシークレットを設定してください。');
         }
         setCampaign(fetchedCampaign);
 
         // Use Firebase Function to securely exchange LINE token
-        // This keeps the Channel Secret on the server
-        const exchangeLineToken = functions.httpsCallable('exchangeLineToken');
-        
+        // Using direct HTTP call since we're using onRequest instead of onCall
+        // This avoids region/CORS issues with Firebase v8
         const redirectUri = `${window.location.origin}/line/callback`;
-        const result = await exchangeLineToken({
-          code,
-          redirectUri,
+        console.log('Calling exchangeLineToken with:', { 
+          code: !!code, 
+          redirectUri, 
           campaignId: fetchedCampaign.id,
+          origin: window.location.origin 
         });
         
-        const { lineUserId } = result.data as { lineUserId: string; success: boolean };
+        // Call the function directly via HTTP
+        // The function is deployed to asia-northeast1 region
+        // Project ID is 'futuremessage-app' based on Firebase config
+        const projectId = 'futuremessage-app';
+        const functionUrl = `https://asia-northeast1-${projectId}.cloudfunctions.net/exchangeLineToken`;
+        
+        let response;
+        try {
+          console.log('Calling function URL:', functionUrl);
+          response = await fetch(functionUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              code,
+              redirectUri,
+              campaignId: fetchedCampaign.id,
+            }),
+          });
+        } catch (fetchError: any) {
+          console.error('Fetch error:', fetchError);
+          throw new Error(`ネットワークエラー: ${fetchError.message}`);
+        }
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+          console.error('Function error response:', errorData);
+          let errorMsg = 'LINE認証の処理に失敗しました。';
+          if (errorData.error === 'not-found') {
+            errorMsg = 'キャンペーンが見つかりませんでした。';
+          } else if (errorData.error === 'failed-precondition') {
+            errorMsg = errorData.message || 'LINEチャンネル設定が不完全です。';
+          } else if (errorData.message) {
+            errorMsg = errorData.message;
+          }
+          throw new Error(errorMsg);
+        }
+        
+        const result = await response.json();
+        
+        if (!result || !result.lineUserId) {
+          throw new Error('LINEユーザーIDの取得に失敗しました。');
+        }
+
+        const { lineUserId, success } = result as { lineUserId: string; success?: boolean };
 
         if (!lineUserId) {
-            throw new Error('LINEユーザーIDの取得に失敗しました。')
+          throw new Error('LINEユーザーIDの取得に失敗しました。LINE認証を再度お試しください。');
         }
+
+        // Calculate delivery time before creating submission
+        let scheduledDeliveryTime: string;
+        const submittedAt = new Date(pendingSubmission.submittedAt || new Date().toISOString());
+        
+        // Helper to format date in Asia/Tokyo timezone as ISO string
+        const toTokyoISOString = (date: Date): string => {
+          const tokyoOffset = 9 * 60; // minutes
+          const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
+          const tokyoTime = new Date(utc + (tokyoOffset * 60000));
+          return tokyoTime.toISOString();
+        };
+        
+        if (fetchedCampaign.deliveryType === 'datetime' && fetchedCampaign.deliveryDateTime) {
+          const deliveryDate = new Date(fetchedCampaign.deliveryDateTime);
+          scheduledDeliveryTime = toTokyoISOString(deliveryDate);
+        } else if (fetchedCampaign.deliveryType === 'interval' && fetchedCampaign.deliveryIntervalDays) {
+          const deliveryDate = new Date(submittedAt);
+          deliveryDate.setDate(deliveryDate.getDate() + Number(fetchedCampaign.deliveryIntervalDays));
+          scheduledDeliveryTime = toTokyoISOString(deliveryDate);
+        } else {
+          const deliveryDate = new Date(submittedAt);
+          deliveryDate.setDate(deliveryDate.getDate() + 1);
+          scheduledDeliveryTime = toTokyoISOString(deliveryDate);
+        }
+        
+        const submittedAtISO = toTokyoISOString(submittedAt);
 
         const submissionWithUser: Omit<Submission, 'id'> = {
           ...pendingSubmission,
           lineUserId,
+          submittedAt: submittedAtISO,
           delivered: false, // Initialize as not delivered
+          deliveredAt: scheduledDeliveryTime, // Set the scheduled delivery time
         };
 
         if (fetchedCampaign.settings.survey.enabled && fetchedCampaign.settings.survey.questions.length > 0) {
@@ -94,6 +234,7 @@ const LineCallback: React.FC = () => {
             setStatus('awaiting_survey');
             setIsSurveyOpen(true);
         } else {
+            console.log('Adding submission without survey:', submissionWithUser);
             await addSubmission(submissionWithUser);
             // Mark as submitted
             localStorage.setItem(`fma_submitted_${fetchedCampaign.id}`, 'true');
@@ -102,7 +243,8 @@ const LineCallback: React.FC = () => {
 
       } catch (error: any) {
         console.error('LINE callback error:', error);
-        await handleError(error.message || '処理中にエラーが発生しました。');
+        const errorMessage = error.message || '処理中にエラーが発生しました。';
+        await handleError(errorMessage);
       }
     };
 

@@ -117,6 +117,10 @@ export const sanitizeFormData = (formData: Record<string, any>): Record<string, 
       if (key === 'email') {
         const emailValidation = validateEmail(value);
         sanitized[key] = emailValidation.sanitized;
+      } else if (key === 'lineId') {
+        // Special handling for LINE ID - preserve the value but trim whitespace
+        // Don't remove empty strings here - let validation handle that
+        sanitized[key] = value.trim();
       } else {
         sanitized[key] = sanitizeString(value);
       }

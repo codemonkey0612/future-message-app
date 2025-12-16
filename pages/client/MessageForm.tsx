@@ -50,7 +50,10 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
   }, [imagePreview]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const value = e.target.value;
+    const name = e.target.name;
+    console.log(`[MessageForm] Input changed - ${name}:`, value);
+    setFormData({ ...formData, [name]: value });
   };
   
   const validateImageFile = (file: File): string | null => {
@@ -153,6 +156,7 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
     
     // Email validation only if delivery channel is email OR undefined (default)
     const isEmailDelivery = campaign.deliveryChannel === 'email' || !campaign.deliveryChannel;
+    const isLineDelivery = campaign.deliveryChannel === 'line';
 
     if (isEmailDelivery) {
         if (!formData.email) {
@@ -162,6 +166,14 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
             if (!emailValidation.isValid) {
                 errors.email = '有効なメールアドレスを入力してください。';
             }
+        }
+    }
+
+    if (isLineDelivery) {
+        if (!formData.lineId) {
+            errors.lineId = 'LINE IDは必須です。';
+        } else if (!formData.lineId.trim()) {
+            errors.lineId = 'LINE IDを入力してください。';
         }
     }
     
@@ -183,94 +195,92 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
     e.preventDefault();
     if (!validateForm()) return;
 
-    if (campaign.deliveryChannel === 'line') {
-      initiateLineAuth();
+    if (surveySettings.enabled && surveySettings.questions.length > 0) {
+      setIsSurveyOpen(true);
     } else {
-      if (surveySettings.enabled && surveySettings.questions.length > 0) {
-        setIsSurveyOpen(true);
+      if (campaign.deliveryChannel === 'line') {
+        finalizeLineSubmission({});
       } else {
         finalizeEmailSubmission({});
       }
     }
   };
 
-  const initiateLineAuth = () => {
-    if (!campaign.lineChannelId) {
-      alert("LINEチャンネルIDが設定されていません。");
-      return;
-    }
-    
-    // Validate form before proceeding
-    if (!validateForm()) {
-      return;
-    }
-    
+  const finalizeLineSubmission = async (surveyAnswers: any) => {
     setIsSubmitting(true);
-    
     try {
-      // Sanitize form data before storing in session
-      const sanitizedFormData = sanitizeFormData(formData);
-      
-      // Calculate delivery time based on campaign type (similar to email submission)
-      const submittedAt = new Date();
-      const toTokyoISOString = (date: Date): string => {
-        const tokyoOffset = 9 * 60; // minutes
-        const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
-        const tokyoTime = new Date(utc + (tokyoOffset * 60000));
-        return tokyoTime.toISOString();
-      };
-      
-      let scheduledDeliveryTime: string;
-      if (campaign.deliveryType === 'datetime' && campaign.deliveryDateTime) {
-        const deliveryDate = new Date(campaign.deliveryDateTime);
-        scheduledDeliveryTime = toTokyoISOString(deliveryDate);
-      } else if (campaign.deliveryType === 'interval' && campaign.deliveryIntervalDays) {
-        const deliveryDate = new Date(submittedAt);
-        deliveryDate.setDate(deliveryDate.getDate() + Number(campaign.deliveryIntervalDays));
-        scheduledDeliveryTime = toTokyoISOString(deliveryDate);
-      } else {
-        const deliveryDate = new Date(submittedAt);
-        deliveryDate.setDate(deliveryDate.getDate() + 1);
-        scheduledDeliveryTime = toTokyoISOString(deliveryDate);
-      }
-      
-      const submittedAtISO = toTokyoISOString(submittedAt);
-      
-      const submissionData = {
+        // Sanitize form data before submission
+        const sanitizedFormData = sanitizeFormData(formData);
+        
+        // Calculate delivery time based on campaign type
+        // Use Asia/Tokyo timezone for all date calculations
+        let scheduledDeliveryTime: string;
+        const submittedAt = new Date();
+        
+        // Helper to format date in Asia/Tokyo timezone as ISO string
+        const toTokyoISOString = (date: Date): string => {
+            // Convert to Asia/Tokyo timezone (UTC+9)
+            const tokyoOffset = 9 * 60; // minutes
+            const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
+            const tokyoTime = new Date(utc + (tokyoOffset * 60000));
+            return tokyoTime.toISOString();
+        };
+        
+        if (campaign.deliveryType === 'datetime' && campaign.deliveryDateTime) {
+            // Use the campaign's deliveryDateTime (assume it's in Asia/Tokyo timezone)
+            const deliveryDate = new Date(campaign.deliveryDateTime);
+            scheduledDeliveryTime = toTokyoISOString(deliveryDate);
+        } else if (campaign.deliveryType === 'interval' && campaign.deliveryIntervalDays) {
+            // Calculate: submittedAt + interval days
+            const deliveryDate = new Date(submittedAt);
+            deliveryDate.setDate(deliveryDate.getDate() + Number(campaign.deliveryIntervalDays));
+            scheduledDeliveryTime = toTokyoISOString(deliveryDate);
+        } else {
+            // Default: schedule for 1 day from now if no delivery type is set
+            const deliveryDate = new Date(submittedAt);
+            deliveryDate.setDate(deliveryDate.getDate() + 1);
+            scheduledDeliveryTime = toTokyoISOString(deliveryDate);
+        }
+        
+        // Format submittedAt in Asia/Tokyo timezone
+        const submittedAtISO = toTokyoISOString(submittedAt);
+        
+        console.log('[MessageForm] Creating LINE submission:');
+        console.log('[MessageForm] - Original formData:', formData);
+        console.log('[MessageForm] - Sanitized formData:', sanitizedFormData);
+        console.log('[MessageForm] - LINE ID in formData:', formData.lineId);
+        console.log('[MessageForm] - LINE ID in sanitizedFormData:', sanitizedFormData.lineId);
+        console.log('[MessageForm] - submittedAt (Tokyo):', submittedAtISO);
+        console.log('[MessageForm] - deliveredAt (Tokyo):', scheduledDeliveryTime);
+        
+        // Verify LINE ID is present
+        if (!sanitizedFormData.lineId || !sanitizedFormData.lineId.trim()) {
+            throw new Error('LINE IDが入力されていません。');
+        }
+        
+        const newSubmission: Omit<Submission, 'id'> = {
         campaignId: campaign.id,
-        submittedAt: submittedAtISO,
-        deliveryChoice: 'line' as const,
+        submittedAt: submittedAtISO, // Use Asia/Tokyo timezone
+        deliveryChoice: 'line',
         formData: sanitizedFormData,
-        surveyAnswers: {}, // Will be filled in after auth
-        delivered: false,
-        deliveredAt: scheduledDeliveryTime,
-      };
-
-      // Generate a secure random state for CSRF protection
-      const state = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-      
-      // Store data in sessionStorage
-      try {
-        sessionStorage.setItem('pendingSubmission', JSON.stringify(submissionData));
-        sessionStorage.setItem('lineAuthState', state);
-        console.log('Stored LINE auth data in sessionStorage');
-      } catch (storageError) {
-        console.error('Failed to store in sessionStorage:', storageError);
-        alert('データの保存に失敗しました。プライベートモードを使用している場合は、通常モードでお試しください。');
+        surveyAnswers,
+        delivered: false, // Initialize as not delivered
+        deliveredAt: scheduledDeliveryTime, // Set the scheduled delivery time - ALWAYS set this field
+        };
+        
+        console.log('[MessageForm] Submission data before sending:', JSON.stringify(newSubmission, null, 2));
+        await addSubmission(newSubmission);
+        console.log('[MessageForm] Submission created successfully');
+        
+        // Mark as submitted in local storage to prevent multiple submissions
+        localStorage.setItem(`fma_submitted_${campaign.id}`, 'true');
+        
+        setSubmissionSuccess(true);
+    } catch (error) {
+        console.error("Error submitting message:", error);
+        alert('メッセージの送信中にエラーが発生しました。');
+    } finally {
         setIsSubmitting(false);
-        return;
-      }
-
-      // Removed hash from redirect URI
-      const redirectUri = `${window.location.origin}/line/callback`;
-      const lineAuthUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${campaign.lineChannelId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=profile%20openid`;
-      
-      console.log('Redirecting to LINE authorization:', lineAuthUrl.substring(0, 100) + '...');
-      window.location.href = lineAuthUrl;
-    } catch (error: any) {
-      console.error('Error initiating LINE auth:', error);
-      alert('LINE認証の開始に失敗しました。もう一度お試しください。');
-      setIsSubmitting(false);
     }
   };
   
@@ -502,10 +512,27 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
             </div>
         </div>
         
+        {/* LINE ID input field - User enters the LINE User ID of the recipient
+            Testing: Get LINE User ID from LINE Developers Console or by having a user message your bot
+            Format: Usually starts with 'U' followed by alphanumeric characters (e.g., U1234567890abcdef...) */}
         {campaign.deliveryChannel === 'line' && (
-            <div className="p-3 text-sm text-sky-800 bg-sky-100 border-l-4 border-sky-500 rounded-r-md">
-                <p className="font-semibold">LINEでメッセージを受け取るには</p>
-                <p className="mt-1">送信後、LINE認証と指定アカウントの友だち追加が必要です。</p>
+            <div>
+                <label htmlFor="lineId" className="block text-sm font-medium text-gray-700">LINE ID</label>
+                <input
+                    type="text"
+                    id="lineId"
+                    name="lineId"
+                    value={formData.lineId || ''}
+                    onChange={handleInputChange}
+                    className="mt-1 block w-full p-3 rounded-md border border-gray-300 shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/50"
+                    required
+                    placeholder="LINEユーザーIDを入力してください"
+                />
+                {formErrors.lineId && <p className="text-red-500 text-sm mt-1">{formErrors.lineId}</p>}
+                <div className="mt-2 p-3 text-sm text-sky-800 bg-sky-100 border-l-4 border-sky-500 rounded-r-md">
+                    <p className="font-semibold">LINEでメッセージを受け取るには</p>
+                    <p className="mt-1">指定したLINE IDのアカウントが、このキャンペーンのLINE公式アカウントを友だち追加している必要があります。</p>
+                </div>
             </div>
         )}
         
@@ -554,7 +581,7 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
         </div>
 
         <button type="submit" style={{ backgroundColor: campaign.settings.design.themeColor }} className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-base font-medium text-white hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:bg-gray-400" disabled={isSubmitting}>
-          {isSubmitting ? <Spinner /> : (campaign.deliveryChannel === 'line' ? 'LINE認証をして送信' : 'メッセージを送信')}
+          {isSubmitting ? <Spinner /> : 'メッセージを送信'}
         </button>
       </form>
 
@@ -562,7 +589,7 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
         <SurveyModal
           survey={surveySettings}
           onClose={() => setIsSurveyOpen(false)}
-          onSubmit={finalizeEmailSubmission}
+          onSubmit={campaign.deliveryChannel === 'line' ? finalizeLineSubmission : finalizeEmailSubmission}
         />
       )}
       {modalContent && (

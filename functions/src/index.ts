@@ -224,11 +224,40 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
   // If no placeholders were used, append all form field data at the end
   if (!emailBody.includes('{') && submission.formData) {
     const formFieldsText: string[] = [];
+    
+    // Get custom field labels from campaign settings
+    const customFieldsMap = new Map<string, string>();
+    if (campaign.settings?.form?.fields?.customFields) {
+      for (const customField of campaign.settings.form.fields.customFields) {
+        // Store with lowercase key for case-insensitive lookup
+        customFieldsMap.set(customField.id.toLowerCase(), customField.label);
+      }
+    }
+    
     for (const [key, value] of Object.entries(submission.formData)) {
-      if (key !== 'imageUrl' && value !== undefined && value !== null && value !== '') {
-        // Convert key to readable label (capitalize first letter)
-        const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1');
-        formFieldsText.push(`${label}: ${value}`);
+      // Skip imageUrl and email fields
+      if (key === 'imageUrl' || key === 'email') {
+        continue;
+      }
+      
+      if (value !== undefined && value !== null && value !== '') {
+        let label: string;
+        
+        // Handle message field: use "お預かりしたメッセージ："
+        if (key === 'message') {
+          label = 'お預かりしたメッセージ：';
+        }
+        // Handle custom fields (starting with "cf" or "Cf"): use configured field label
+        else if (key.toLowerCase().startsWith('cf')) {
+          const fieldLabel = customFieldsMap.get(key.toLowerCase());
+          label = fieldLabel ? `${fieldLabel}：` : `${key}：`;
+        }
+        // For other fields, use the key as-is with colon
+        else {
+          label = `${key}：`;
+        }
+        
+        formFieldsText.push(`${label}${value}`);
       }
     }
     if (formFieldsText.length > 0) {
@@ -579,14 +608,39 @@ async function sendLineHelper(submissionId: string, campaignId: string): Promise
   // Include all form fields similar to email
   let lineMessage = submission.formData?.message || "未来へのメッセージ";
   
-  // Add custom form fields to the message
+  // Add custom form fields to the message (using same formatting as email)
   if (submission.formData) {
     const formFieldsText: string[] = [];
+    
+    // Get custom field labels from campaign settings
+    const customFieldsMap = new Map<string, string>();
+    if (campaign.settings?.form?.fields?.customFields) {
+      for (const customField of campaign.settings.form.fields.customFields) {
+        // Store with lowercase key for case-insensitive lookup
+        customFieldsMap.set(customField.id.toLowerCase(), customField.label);
+      }
+    }
+    
     for (const [key, value] of Object.entries(submission.formData)) {
-      if (key !== 'imageUrl' && key !== 'message' && value !== undefined && value !== null && value !== '') {
-        // Convert key to readable label
-        const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1');
-        formFieldsText.push(`${label}: ${value}`);
+      // Skip imageUrl, message, and email fields
+      if (key === 'imageUrl' || key === 'message' || key === 'email') {
+        continue;
+      }
+      
+      if (value !== undefined && value !== null && value !== '') {
+        let label: string;
+        
+        // Handle custom fields (starting with "cf" or "Cf"): use configured field label
+        if (key.toLowerCase().startsWith('cf')) {
+          const fieldLabel = customFieldsMap.get(key.toLowerCase());
+          label = fieldLabel ? `${fieldLabel}：` : `${key}：`;
+        }
+        // For other fields, use the key as-is with colon
+        else {
+          label = `${key}：`;
+        }
+        
+        formFieldsText.push(`${label}${value}`);
       }
     }
     if (formFieldsText.length > 0) {

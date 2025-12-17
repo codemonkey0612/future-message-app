@@ -471,7 +471,7 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
                             />
                             {uploadingImage && (
                               <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-90 rounded-lg">
-                                <div className="bg-white rounded-lg p-4 flex flex-col items-center shadow-lg border border-gray-200">
+                                <div className="bg-white rounded-lg p-4 flex flex-col items-center border border-gray-200">
                                   <Spinner />
                                   <p className="mt-2 text-sm text-gray-700">アップロード中...</p>
                                 </div>
@@ -593,8 +593,8 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
         />
       )}
       {modalContent && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 p-4 transition-opacity duration-300" aria-modal="true" role="dialog">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col transform transition-all duration-300 animate-fade-in-scale">
+        <div className="fixed inset-0 flex items-center justify-center z-50 p-4 transition-opacity duration-300 pointer-events-none" aria-modal="true" role="dialog">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col transform transition-all duration-300 animate-fade-in-scale pointer-events-auto">
             <div className="p-4 border-b flex justify-between items-center sticky top-0 bg-white z-10">
                 <h3 className="text-lg font-bold text-gray-800">{modalContent.title}</h3>
                 <button onClick={() => setModalContent(null)} className="text-gray-500 hover:text-gray-800 text-2xl leading-none">&times;</button>
@@ -609,8 +609,8 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
         </div>
       )}
       {submissionSuccess && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 p-4 transition-opacity duration-300" aria-modal="true" role="dialog">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-8 text-center animate-fade-in-scale">
+        <div className="fixed inset-0 flex items-center justify-center z-50 p-4 transition-opacity duration-300 pointer-events-none" aria-modal="true" role="dialog">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-8 text-center animate-fade-in-scale pointer-events-auto">
             <svg className="mx-auto h-16 w-16 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>

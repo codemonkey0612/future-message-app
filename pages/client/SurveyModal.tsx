@@ -34,8 +34,8 @@ const SurveyModal: React.FC<SurveyModalProps> = ({ survey, onClose, onSubmit }) 
   };
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center z-50 p-4 pointer-events-none">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto pointer-events-auto">
+    <div className="fixed inset-0 flex items-center justify-center z-50 p-4 pointer-events-none" style={{ backgroundColor: 'rgba(0, 0, 0, 0.02)' }}>
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto pointer-events-auto relative z-10">
         <div className="p-6">
           <h2 className="text-2xl font-bold text-gray-800 mb-4">アンケート</h2>
           <p className="text-gray-600 mb-6">メッセージを保存する前に、いくつかの質問にお答えください。</p>

@@ -62,15 +62,15 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
       return '画像ファイルを選択してください。';
     }
 
-    // Check file size (5MB limit for email compatibility)
-    const maxSize = 5 * 1024 * 1024; // 5MB
+    // Check file size (10MB limit)
+    const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
-      return 'ファイルサイズは5MB以下にしてください。';
+      return 'ファイルサイズは10MB以下にしてください。';
     }
 
     return null;
   };
-
+  
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     console.log('handleImageChange called');
     
@@ -79,7 +79,7 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
       return;
     }
 
-    const file = e.target.files[0];
+      const file = e.target.files[0];
     console.log('File selected:', file.name, file.type, file.size);
     
     // Clear previous errors
@@ -210,7 +210,7 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
     setIsSubmitting(true);
     try {
         // Sanitize form data before submission
-        const sanitizedFormData = sanitizeFormData(formData);
+    const sanitizedFormData = sanitizeFormData(formData);
         
         // Calculate delivery time based on campaign type
         // Use Asia/Tokyo timezone for all date calculations
@@ -271,7 +271,7 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
         console.log('[MessageForm] Submission data before sending:', JSON.stringify(newSubmission, null, 2));
         await addSubmission(newSubmission);
         console.log('[MessageForm] Submission created successfully');
-        
+
         // Mark as submitted in local storage to prevent multiple submissions
         localStorage.setItem(`fma_submitted_${campaign.id}`, 'true');
         
@@ -487,7 +487,7 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
                   <div className="flex flex-col items-center">
                     <Spinner />
                     <p className="mt-2 text-sm text-gray-600">処理中...</p>
-                  </div>
+                    </div>
                 ) : (
                     <div>
                         <ArrowUpTrayIcon className="mx-auto h-12 w-12 text-gray-300 group-hover:text-primary transition-colors" />
@@ -530,7 +530,7 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
                 />
                 {formErrors.lineId && <p className="text-red-500 text-sm mt-1">{formErrors.lineId}</p>}
                 <div className="mt-2 p-3 text-sm text-sky-800 bg-sky-100 border-l-4 border-sky-500 rounded-r-md">
-                    <p className="font-semibold">LINEでメッセージを受け取るには</p>
+                <p className="font-semibold">LINEでメッセージを受け取るには</p>
                     <p className="mt-1">指定したLINE IDのアカウントが、このキャンペーンのLINE公式アカウントを友だち追加している必要があります。</p>
                 </div>
             </div>
@@ -594,7 +594,7 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
       )}
       {modalContent && (
         <div className="fixed inset-0 flex items-center justify-center z-50 p-4 transition-opacity duration-300 pointer-events-none" aria-modal="true" role="dialog">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col transform transition-all duration-300 animate-fade-in-scale pointer-events-auto">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col transform transition-all duration-300 animate-fade-in-scale pointer-events-auto relative z-10">
             <div className="p-4 border-b flex justify-between items-center sticky top-0 bg-white z-10">
                 <h3 className="text-lg font-bold text-gray-800">{modalContent.title}</h3>
                 <button onClick={() => setModalContent(null)} className="text-gray-500 hover:text-gray-800 text-2xl leading-none">&times;</button>
@@ -610,7 +610,7 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
       )}
       {submissionSuccess && (
         <div className="fixed inset-0 flex items-center justify-center z-50 p-4 transition-opacity duration-300 pointer-events-none" aria-modal="true" role="dialog">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-8 text-center animate-fade-in-scale pointer-events-auto">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-8 text-center animate-fade-in-scale pointer-events-auto relative z-10">
             <svg className="mx-auto h-16 w-16 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>

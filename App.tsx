@@ -18,7 +18,7 @@ const App: React.FC = () => {
       <BrowserRouter>
         <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><Spinner /></div>}>
           <Routes>
-            <Route path="/" element={<Navigate to="/admin/clients" replace />} />
+            <Route path="/" element={<div style={{ width: '100%', height: '100vh', backgroundColor: 'white' }} />} />
             <Route path="/campaign/:id" element={<CampaignView />} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin/register" element={<AdminRegister />} />

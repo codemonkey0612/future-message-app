@@ -225,6 +225,13 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
   if (!emailBody.includes('{') && submission.formData) {
     const formFieldsText: string[] = [];
     
+    // Add submission date at the beginning (submittedAtDate is already calculated above)
+    // Format date as yyyy年mm月dd日
+    const year = submittedAtDate.getFullYear();
+    const month = (submittedAtDate.getMonth() + 1).toString().padStart(2, '0');
+    const day = submittedAtDate.getDate().toString().padStart(2, '0');
+    formFieldsText.push(`お預かり日時：${year}年${month}月${day}日`);
+    
     // Get custom field labels from campaign settings
     const customFieldsMap = new Map<string, string>();
     if (campaign.settings?.form?.fields?.customFields) {

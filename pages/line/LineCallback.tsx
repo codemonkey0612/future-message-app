@@ -71,7 +71,7 @@ const LineCallback: React.FC = () => {
           console.error('Error parsing pendingSubmission:', e);
         }
       }
-
+      
       const handleError = async (message: string) => {
         console.error('LINE callback error:', message);
         setErrorMessage(message);
@@ -138,7 +138,7 @@ const LineCallback: React.FC = () => {
         const redirectUri = `${window.location.origin}/line/callback`;
         console.log('Calling exchangeLineToken with:', { 
           code: !!code, 
-          redirectUri, 
+          redirectUri,
           campaignId: fetchedCampaign.id,
           origin: window.location.origin 
         });

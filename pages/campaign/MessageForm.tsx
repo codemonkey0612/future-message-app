@@ -32,10 +32,10 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
       return '画像ファイルを選択してください。';
     }
 
-    // Check file size (5MB limit for email compatibility)
-    const maxSize = 5 * 1024 * 1024; // 5MB
+    // Check file size (10MB limit)
+    const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
-      return 'ファイルサイズは5MB以下にしてください。';
+      return 'ファイルサイズは10MB以下にしてください。';
     }
 
     return null;
@@ -46,7 +46,7 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
       return;
     }
 
-    const file = e.target.files[0];
+      const file = e.target.files[0];
     
     // Clear previous errors
     setImageError(null);

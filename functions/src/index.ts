@@ -63,14 +63,14 @@ export const exchangeLineToken = functions.region('asia-northeast1').https.onReq
   try {
     const { code, redirectUri, campaignId } = req.body as { code?: string; redirectUri?: string; campaignId?: string };
 
-    // Validate input
-    if (!code || !redirectUri || !campaignId) {
+  // Validate input
+  if (!code || !redirectUri || !campaignId) {
       res.status(400).json({
         error: "invalid-argument",
         message: "Missing required parameters: code, redirectUri, or campaignId"
       });
       return;
-    }
+  }
 
     // Get campaign from Firestore to retrieve LINE credentials
     const campaignDoc = await admin.firestore().collection("campaigns").doc(campaignId).get();
@@ -306,11 +306,11 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
       }
       // Check if it's a data URL (base64) - for backward compatibility
       else if (imageUrl.startsWith('data:image/')) {
-        // Extract MIME type and base64 data
-        const matches = imageUrl.match(/^data:image\/(\w+);base64,(.+)$/);
-        if (matches) {
-          const mimeType = matches[1];
-          const base64Data = matches[2];
+      // Extract MIME type and base64 data
+      const matches = imageUrl.match(/^data:image\/(\w+);base64,(.+)$/);
+      if (matches) {
+        const mimeType = matches[1];
+        const base64Data = matches[2];
           
           // Check size - if base64 is too large, email might be rejected
           const base64Size = base64Data.length * 3 / 4; // Approximate binary size
@@ -320,25 +320,25 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
             console.warn(`[sendEmailHelper] Image too large (${Math.round(base64Size / 1024)}KB), cannot attach`);
             htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fef3c7; border-radius: 8px; color: #92400e;">画像が大きすぎるため、添付できませんでした。</div>`;
           } else {
-            const buffer = Buffer.from(base64Data, 'base64');
-            
-            // Generate a unique CID for the image
-            imageCid = `message-image-${submissionId}`;
-            
-            // Add as attachment with CID
-            attachments.push({
-              filename: `message-image.${mimeType}`,
-              content: buffer,
-              cid: imageCid,
-              contentType: `image/${mimeType}`,
-            });
-            
-            // Reference in HTML using CID
-            htmlBody += `<br><br><div style="text-align: center; margin: 20px 0;"><img src="cid:${imageCid}" alt="Message image" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"></div>`;
-            
+        const buffer = Buffer.from(base64Data, 'base64');
+        
+        // Generate a unique CID for the image
+        imageCid = `message-image-${submissionId}`;
+        
+        // Add as attachment with CID
+        attachments.push({
+          filename: `message-image.${mimeType}`,
+          content: buffer,
+          cid: imageCid,
+          contentType: `image/${mimeType}`,
+        });
+        
+        // Reference in HTML using CID
+        htmlBody += `<br><br><div style="text-align: center; margin: 20px 0;"><img src="cid:${imageCid}" alt="Message image" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"></div>`;
+        
             console.log(`[sendEmailHelper] Converting data URL to attachment with CID: ${imageCid}, size: ${Math.round(buffer.length / 1024)}KB`);
           }
-        } else {
+      } else {
           console.warn(`[sendEmailHelper] Invalid data URL format`);
           htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fee2e2; border-radius: 8px; color: #991b1b;">画像の形式が正しくありませんでした。</div>`;
         }
@@ -375,7 +375,7 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
             } else if (imageBuffer.length === 0) {
               console.warn(`[sendEmailHelper] Image buffer is empty`);
               htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fee2e2; border-radius: 8px; color: #991b1b;">画像のダウンロードに失敗しました。</div>`;
-            } else {
+    } else {
               // Determine file extension from content type or URL
               let ext = 'jpg';
               if (contentType.includes('png')) ext = 'png';

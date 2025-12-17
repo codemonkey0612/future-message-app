@@ -586,13 +586,17 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
       </form>
 
       {isSurveyOpen && (
+        <>
         <SurveyModal
           survey={surveySettings}
           onClose={() => setIsSurveyOpen(false)}
           onSubmit={campaign.deliveryChannel === 'line' ? finalizeLineSubmission : finalizeEmailSubmission}
         />
+        <div style={{position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(0, 0, 0, 0.5)'}}></div>
+      </>
       )}
       {modalContent && (
+        <>
         <div className="fixed inset-0 flex items-center justify-center z-50 p-4 transition-opacity duration-300 pointer-events-none" aria-modal="true" role="dialog">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col transform transition-all duration-300 animate-fade-in-scale pointer-events-auto relative z-10">
             <div className="p-4 border-b flex justify-between items-center sticky top-0 bg-white z-10">
@@ -607,8 +611,11 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
             </div>
           </div>
         </div>
+        <div style={{position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(0, 0, 0, 0.5)'}}></div>
+      </>
       )}
       {submissionSuccess && (
+        <>
         <div className="fixed inset-0 flex items-center justify-center z-50 p-4 transition-opacity duration-300 pointer-events-none" aria-modal="true" role="dialog">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-8 text-center animate-fade-in-scale pointer-events-auto relative z-10">
             <svg className="mx-auto h-16 w-16 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -623,6 +630,8 @@ const MessageForm: React.FC<MessageFormProps> = ({ campaign }) => {
             </p>
           </div>
         </div>
+        <div style={{position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(0, 0, 0, 0.5)'}}></div>
+      </>
       )}
     </>
   );

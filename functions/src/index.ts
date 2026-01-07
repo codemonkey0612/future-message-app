@@ -303,7 +303,7 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
       if (imageUrl.startsWith('blob:')) {
         console.warn(`[sendEmailHelper] Skipping blob: URL - cannot be used in emails`);
         htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #f3f4f6; border-radius: 8px; color: #6b7280;">画像は添付されていますが、プレビューを表示できませんでした。</div>`;
-        htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;">画像URL: ${imageUrl}</div>`;
+        htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;">画像が表示されない場合下記URLよりご確認ください。<br><a href="${imageUrl}" style="color: #3b82f6; text-decoration: none;">${imageUrl}</a></div>`;
       }
       // Check if it's a data URL (base64) - for backward compatibility
       else if (imageUrl.startsWith('data:image/')) {
@@ -320,7 +320,7 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
           if (base64Size > maxSize) {
             console.warn(`[sendEmailHelper] Image too large (${Math.round(base64Size / 1024)}KB), cannot attach`);
             htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fef3c7; border-radius: 8px; color: #92400e;">画像が大きすぎるため、添付できませんでした。</div>`;
-            htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;">画像URL: ${imageUrl.substring(0, 100)}...</div>`;
+            htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;">画像が表示されない場合下記URLよりご確認ください。<br><a href="${imageUrl}" style="color: #3b82f6; text-decoration: none;">${imageUrl.substring(0, 100)}...</a></div>`;
           } else {
         const buffer = Buffer.from(base64Data, 'base64');
         
@@ -338,14 +338,14 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
         // Reference in HTML using CID
         htmlBody += `<br><br><div style="text-align: center; margin: 20px 0;"><img src="cid:${imageCid}" alt="Message image" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"></div>`;
         // Add image URL below the image
-        htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;"><a href="${imageUrl}" style="color: #3b82f6; text-decoration: none;">画像URL: ${imageUrl}</a></div>`;
+        htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;">画像が表示されない場合下記URLよりご確認ください。<br><a href="${imageUrl}" style="color: #3b82f6; text-decoration: none;">${imageUrl}</a></div>`;
         
             console.log(`[sendEmailHelper] Converting data URL to attachment with CID: ${imageCid}, size: ${Math.round(buffer.length / 1024)}KB`);
           }
       } else {
           console.warn(`[sendEmailHelper] Invalid data URL format`);
           htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fee2e2; border-radius: 8px; color: #991b1b;">画像の形式が正しくありませんでした。</div>`;
-          htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;">画像URL: ${imageUrl.substring(0, 100)}...</div>`;
+          htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;">画像が表示されない場合下記URLよりご確認ください。<br><a href="${imageUrl}" style="color: #3b82f6; text-decoration: none;">${imageUrl.substring(0, 100)}...</a></div>`;
         }
       } 
       // Firebase Storage URL or regular HTTP/HTTPS URL - download and attach
@@ -377,11 +377,11 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
             if (imageBuffer.length > maxSize) {
               console.warn(`[sendEmailHelper] Image too large (${Math.round(imageBuffer.length / 1024)}KB), cannot attach`);
               htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fef3c7; border-radius: 8px; color: #92400e;">画像が大きすぎるため、添付できませんでした。</div>`;
-              htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;"><a href="${imageUrl}" style="color: #3b82f6; text-decoration: none;">画像URL: ${imageUrl}</a></div>`;
+              htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;">画像が表示されない場合下記URLよりご確認ください。<br><a href="${imageUrl}" style="color: #3b82f6; text-decoration: none;">${imageUrl}</a></div>`;
             } else if (imageBuffer.length === 0) {
               console.warn(`[sendEmailHelper] Image buffer is empty`);
               htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fee2e2; border-radius: 8px; color: #991b1b;">画像のダウンロードに失敗しました。</div>`;
-              htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;"><a href="${imageUrl}" style="color: #3b82f6; text-decoration: none;">画像URL: ${imageUrl}</a></div>`;
+              htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;">画像が表示されない場合下記URLよりご確認ください。<br><a href="${imageUrl}" style="color: #3b82f6; text-decoration: none;">${imageUrl}</a></div>`;
     } else {
               // Determine file extension from content type or URL
               let ext = 'jpg';
@@ -408,31 +408,31 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
               // Reference in HTML using CID
               htmlBody += `<br><br><div style="text-align: center; margin: 20px 0;"><img src="cid:${imageCid}" alt="Message image" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"></div>`;
               // Add image URL below the image
-              htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;"><a href="${imageUrl}" style="color: #3b82f6; text-decoration: none;">画像URL: ${imageUrl}</a></div>`;
+              htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;">画像が表示されない場合下記URLよりご確認ください。<br><a href="${imageUrl}" style="color: #3b82f6; text-decoration: none;">${imageUrl}</a></div>`;
               
               console.log(`[sendEmailHelper] Successfully attached image with CID: ${imageCid}`);
             }
           } else {
             console.error(`[sendEmailHelper] Failed to download image: HTTP ${imageResponse.status} ${imageResponse.statusText}`);
             htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fee2e2; border-radius: 8px; color: #991b1b;">画像のダウンロードに失敗しました (HTTP ${imageResponse.status})。</div>`;
-            htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;"><a href="${imageUrl}" style="color: #3b82f6; text-decoration: none;">画像URL: ${imageUrl}</a></div>`;
+            htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;">画像が表示されない場合下記URLよりご確認ください。<br><a href="${imageUrl}" style="color: #3b82f6; text-decoration: none;">${imageUrl}</a></div>`;
           }
         } catch (fetchError: any) {
           // If fetch fails, log error but don't use URL directly (email clients block external images)
           console.error(`[sendEmailHelper] Error downloading image:`, fetchError.message || fetchError);
           htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fee2e2; border-radius: 8px; color: #991b1b;">画像の取得に失敗しました: ${fetchError.message || 'Unknown error'}。</div>`;
-          htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;"><a href="${imageUrl}" style="color: #3b82f6; text-decoration: none;">画像URL: ${imageUrl}</a></div>`;
+          htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;">画像が表示されない場合下記URLよりご確認ください。<br><a href="${imageUrl}" style="color: #3b82f6; text-decoration: none;">${imageUrl}</a></div>`;
         }
       } else {
         console.warn(`[sendEmailHelper] Unsupported image URL format: ${imageUrl.substring(0, 50)}`);
         htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fef3c7; border-radius: 8px; color: #92400e;">画像URLの形式がサポートされていません。</div>`;
-        htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;">画像URL: ${imageUrl}</div>`;
+        htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;">画像が表示されない場合下記URLよりご確認ください。<br><a href="${imageUrl}" style="color: #3b82f6; text-decoration: none;">${imageUrl}</a></div>`;
       }
     } catch (error: any) {
       console.error(`[sendEmailHelper] Unexpected error processing image:`, error);
       htmlBody += `<br><br><div style="text-align: center; margin: 20px 0; padding: 20px; background-color: #fee2e2; border-radius: 8px; color: #991b1b;">画像の処理中にエラーが発生しました。</div>`;
       if (submission.formData?.imageUrl) {
-        htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;"><a href="${submission.formData.imageUrl}" style="color: #3b82f6; text-decoration: none;">画像URL: ${submission.formData.imageUrl}</a></div>`;
+        htmlBody += `<div style="text-align: center; margin: 10px 0; font-size: 12px; color: #6b7280;">画像が表示されない場合下記URLよりご確認ください。<br><a href="${submission.formData.imageUrl}" style="color: #3b82f6; text-decoration: none;">${submission.formData.imageUrl}</a></div>`;
       }
     }
   }
@@ -457,7 +457,8 @@ async function sendEmailHelper(submissionId: string, campaignId: string): Promis
   let textBody = emailBody.replace(/<br>/g, '\n').replace(/<[^>]*>/g, '');
   if (submission.formData?.imageUrl) {
     textBody += `\n\n[画像が添付されています]`;
-    textBody += `\n画像URL: ${submission.formData.imageUrl}`;
+    textBody += `\n\n画像が表示されない場合下記URLよりご確認ください。`;
+    textBody += `\n${submission.formData.imageUrl}`;
   }
   
   const mailOptions = {
